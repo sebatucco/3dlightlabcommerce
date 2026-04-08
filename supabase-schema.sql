@@ -12,6 +12,10 @@ create table if not exists public.categories (
   created_at timestamptz not null default now()
 );
 
+alter table public.products add column if not exists category text;
+alter table public.products add column if not exists image text;
+alter table public.products add column if not exists image_url text;
+
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
   category_id uuid references public.categories(id) on delete set null,
