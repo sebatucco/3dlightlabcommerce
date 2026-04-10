@@ -1,10 +1,18 @@
+import Image from "next/image"
+
 export default function Logo({ compact = false }) {
   return (
     <div className="group flex items-center gap-3">
       <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--surface-elevated))] shadow-sm">
-        <span className="font-display text-sm tracking-[0.16em] text-[hsl(var(--foreground))]">
-          3D
-        </span>
+
+        <div className="relative h-7 w-7">
+          <Image
+            src="/logo.png"
+            alt="3DLightLab"
+            fill
+            className="object-contain"
+          />
+        </div>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,214,153,0.22),transparent_60%)]" />
       </div>
 

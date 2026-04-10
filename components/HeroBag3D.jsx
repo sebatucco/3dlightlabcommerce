@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 
 const floatTransition = {
@@ -9,18 +10,51 @@ const floatTransition = {
 }
 
 export default function HeroBag3D() {
-  return (
-    <div className="relative mx-auto flex w-full max-w-[560px] items-center justify-center">
-      <div className="absolute inset-6 border border-white/15 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18),_transparent_58%)]" />
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[rgba(44,38,31,0.12)]" />
+  useEffect(() => {
+    let mounted = true
 
-      <motion.img
-        src="/mate-hero1.png"
-        alt="Mate artesanal Sendas del Tafí"
-        className="relative z-10 w-[300px] drop-shadow-[0_28px_45px_rgba(0,0,0,0.28)] md:w-[430px]"
-        animate={{ y: [0, -10, 0] }}
+    async function loadModelViewer() {
+      if (mounted && !customElements.get('model-viewer')) {
+        await import('@google/model-viewer')
+      }
+    }
+
+    loadModelViewer()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  return (
+    <div className="relative mx-auto flex h-[420px] w-full max-w-[520px] items-center justify-center">
+      <div className="pointer-events-none absolute inset-0 rounded-[40px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.10),transparent_55%)]" />
+
+      <motion.div
+        animate={{ y: [-10, 10, -10] }}
         transition={floatTransition}
-      />
+        className="relative z-10 w-full"
+      >
+        <div className="mx-auto h-[420px] w-full max-w-[520px]">
+          <model-viewer
+            src="/models/logo.glb"
+            alt="Modelo 3D principal"
+            auto-rotate
+            camera-controls
+            disable-zoom
+            interaction-prompt="none"
+            shadow-intensity="0"
+            exposure="1"
+            environment-image="neutral"
+            style={{
+              width: '100%',
+              height: '100%',
+              backgroundColor: 'transparent',
+              '--poster-color': 'transparent',
+            }}
+          />
+        </div>
+      </motion.div>
     </div>
   )
 }

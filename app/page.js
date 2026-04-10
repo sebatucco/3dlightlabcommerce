@@ -2,7 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { MessageCircle, LampFloor, Palette, Shield, Home, Send, MapPin, Phone, Mail } from 'lucide-react'
+import {
+  MessageCircle,
+  LampFloor,
+  Palette,
+  Shield,
+  Home,
+  Send,
+  MapPin,
+  Phone,
+  Mail,
+} from 'lucide-react'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 import CartDrawer from '@/components/CartDrawer'
@@ -10,12 +20,29 @@ import WhatsAppButton from '@/components/WhatsAppButton'
 import CatalogClient from '@/components/CatalogClient'
 import { siteConfig } from '@/lib/site'
 import ImageCarousel from '@/components/ImageCarousel'
+import HeroBag3D from '@/components/HeroBag3D'
 
 const features = [
-  { icon: LampFloor, title: 'Luz con intención', desc: 'Diseños pensados para vestir espacios y generar atmósferas cálidas.' },
-  { icon: Palette, title: 'Estética contemporánea', desc: 'Formas nobles, texturas suaves y una presencia visual premium.' },
-  { icon: Shield, title: 'Calidad cuidada', desc: 'Piezas preparadas para acompañar proyectos residenciales y comerciales.' },
-  { icon: Home, title: 'Pensado para habitar', desc: 'Iluminación decorativa para livings, dormitorios, recepciones y estudios.' },
+  {
+    icon: LampFloor,
+    title: 'Luz con intención',
+    desc: 'Diseños pensados para vestir espacios y generar atmósferas cálidas.',
+  },
+  {
+    icon: Palette,
+    title: 'Estética contemporánea',
+    desc: 'Formas nobles, texturas suaves y una presencia visual premium.',
+  },
+  {
+    icon: Shield,
+    title: 'Calidad cuidada',
+    desc: 'Piezas preparadas para acompañar proyectos residenciales y comerciales.',
+  },
+  {
+    icon: Home,
+    title: 'Pensado para habitar',
+    desc: 'Iluminación decorativa para livings, dormitorios, recepciones y estudios.',
+  },
 ]
 
 export default function HomePage() {
@@ -55,6 +82,7 @@ export default function HomePage() {
     }
 
     loadStoreData()
+
     return () => {
       mounted = false
     }
@@ -81,8 +109,12 @@ export default function HomePage() {
       <CartDrawer />
       <WhatsAppButton />
 
-      <section id="inicio" className="relative flex min-h-screen items-center overflow-hidden bg-[hsl(var(--bone))] pt-16">
+      <section
+        id="inicio"
+        className="relative flex min-h-screen items-center overflow-hidden bg-[hsl(var(--bone))] pt-16"
+      >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(213,167,98,0.18),transparent_26%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.6),transparent_24%)]" />
+
         <div className="container relative mx-auto grid items-center gap-12 px-4 lg:grid-cols-2">
           <motion.div
             initial={{ opacity: 0, x: -40 }}
@@ -92,12 +124,19 @@ export default function HomePage() {
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[hsl(var(--warm-gray-dark))]">
               Diseño de iluminación premium
             </p>
+
             <h1 className="mt-4 text-5xl font-bold leading-tight text-foreground md:text-7xl">
-              Luz cálida para <span className="text-[hsl(var(--warm-gray-dark))]">espacios con carácter</span>
+              Luz cálida para{' '}
+              <span className="text-[hsl(var(--warm-gray-dark))]">
+                espacios con carácter
+              </span>
             </h1>
+
             <p className="mt-6 max-w-md text-lg leading-relaxed text-muted-foreground">
-              3DLightLab Commerce reúne piezas decorativas, lámparas escultóricas y soluciones de iluminación con una experiencia de compra clara y elegante.
+              3DLightLab Commerce reúne piezas decorativas, lámparas escultóricas y
+              soluciones de iluminación con una experiencia de compra clara y elegante.
             </p>
+
             <div className="mt-8 flex flex-wrap gap-4">
               <a
                 href="#catalogo"
@@ -105,6 +144,7 @@ export default function HomePage() {
               >
                 Ver colección
               </a>
+
               <a
                 href={`https://wa.me/${siteConfig.whatsappNumber}`}
                 target="_blank"
@@ -123,13 +163,7 @@ export default function HomePage() {
             transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
             className="flex justify-center"
           >
-            <motion.img
-              src="/hero/lamp-hero.png"
-              alt="Lámpara decorativa 3DLightLab"
-              className="w-[320px] drop-shadow-[0_24px_60px_rgba(88,61,28,0.24)] md:w-[450px] lg:w-[520px]"
-              animate={{ y: [0, -10, 0] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-            />
+            <HeroBag3D />
           </motion.div>
         </div>
       </section>
@@ -146,14 +180,20 @@ export default function HomePage() {
             viewport={{ once: true }}
             className="mb-16 text-center"
           >
-            <h2 className="text-4xl font-bold text-foreground md:text-5xl">Colección destacada</h2>
+            <h2 className="text-4xl font-bold text-foreground md:text-5xl">
+              Colección destacada
+            </h2>
             <p className="mx-auto mt-4 max-w-md text-lg text-muted-foreground">
               Lámparas con materialidad cálida, presencia visual y detalles cuidados.
             </p>
           </motion.div>
         </div>
 
-        <CatalogClient products={products} categories={categories} loading={loading} />
+        <CatalogClient
+          products={products}
+          categories={categories}
+          loading={loading}
+        />
       </section>
 
       <section id="nosotros" className="bg-[hsl(var(--bone))] py-24">
@@ -165,7 +205,11 @@ export default function HomePage() {
               viewport={{ once: true }}
               className="overflow-hidden rounded-[30px] border border-[hsl(var(--border))] bg-white p-3 warm-shadow"
             >
-              <img src="/hero/lifestyle.jpg" alt="Lámpara en ambiente cálido" className="h-[400px] w-full rounded-[24px] object-cover lg:h-[500px]" />
+              <img
+                src="/hero/lifestyle.jpg"
+                alt="Lámpara en ambiente cálido"
+                className="h-[400px] w-full rounded-[24px] object-cover lg:h-[500px]"
+              />
             </motion.div>
 
             <motion.div
@@ -173,10 +217,18 @@ export default function HomePage() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
             >
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[hsl(var(--warm-gray-dark))]">Nuestro enfoque</p>
-              <h2 className="mt-4 text-4xl font-bold text-foreground md:text-5xl">Más que una lámpara, una atmósfera</h2>
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[hsl(var(--warm-gray-dark))]">
+                Nuestro enfoque
+              </p>
+
+              <h2 className="mt-4 text-4xl font-bold text-foreground md:text-5xl">
+                Más que una lámpara, una atmósfera
+              </h2>
+
               <p className="mt-6 leading-relaxed text-muted-foreground">
-                En 3DLightLab Commerce entendemos la iluminación como parte esencial del proyecto interior. Seleccionamos piezas que aportan textura, escala y una luz confortable para habitar mejor cada ambiente.
+                En 3DLightLab Commerce entendemos la iluminación como parte esencial
+                del proyecto interior. Seleccionamos piezas que aportan textura,
+                escala y una luz confortable para habitar mejor cada ambiente.
               </p>
 
               <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -192,9 +244,14 @@ export default function HomePage() {
                     <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-accent">
                       <feature.icon size={18} className="text-foreground" />
                     </div>
+
                     <div>
-                      <h3 className="text-sm font-semibold text-foreground">{feature.title}</h3>
-                      <p className="mt-1 text-xs text-muted-foreground">{feature.desc}</p>
+                      <h3 className="text-sm font-semibold text-foreground">
+                        {feature.title}
+                      </h3>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {feature.desc}
+                      </p>
                     </div>
                   </motion.div>
                 ))}
@@ -212,8 +269,12 @@ export default function HomePage() {
             viewport={{ once: true }}
             className="mb-16 text-center"
           >
-            <h2 className="text-4xl font-bold text-foreground md:text-5xl">Contacto</h2>
-            <p className="mt-4 text-lg text-muted-foreground">¿Estás armando un espacio o querés asesoramiento? Escribinos.</p>
+            <h2 className="text-4xl font-bold text-foreground md:text-5xl">
+              Contacto
+            </h2>
+            <p className="mt-4 text-lg text-muted-foreground">
+              ¿Estás armando un espacio o querés asesoramiento? Escribinos.
+            </p>
           </motion.div>
 
           <div className="mx-auto grid max-w-4xl gap-12 lg:grid-cols-2">
@@ -225,7 +286,9 @@ export default function HomePage() {
               className="space-y-5 rounded-[30px] border border-[hsl(var(--border))] bg-white p-8 warm-shadow"
             >
               <div>
-                <label className="mb-1.5 block text-sm text-muted-foreground">Nombre</label>
+                <label className="mb-1.5 block text-sm text-muted-foreground">
+                  Nombre
+                </label>
                 <input
                   type="text"
                   required
@@ -235,8 +298,11 @@ export default function HomePage() {
                   placeholder="Tu nombre"
                 />
               </div>
+
               <div>
-                <label className="mb-1.5 block text-sm text-muted-foreground">Email</label>
+                <label className="mb-1.5 block text-sm text-muted-foreground">
+                  Email
+                </label>
                 <input
                   type="email"
                   required
@@ -246,8 +312,11 @@ export default function HomePage() {
                   placeholder="tu@email.com"
                 />
               </div>
+
               <div>
-                <label className="mb-1.5 block text-sm text-muted-foreground">Mensaje</label>
+                <label className="mb-1.5 block text-sm text-muted-foreground">
+                  Mensaje
+                </label>
                 <textarea
                   required
                   rows={4}
@@ -257,6 +326,7 @@ export default function HomePage() {
                   placeholder="Contanos qué ambiente querés resolver o qué pieza te interesa."
                 />
               </div>
+
               <button
                 type="submit"
                 className="inline-flex items-center gap-2 rounded-full bg-[hsl(var(--primary))] px-8 py-3 text-sm font-medium tracking-wide text-[hsl(var(--primary-foreground))] transition-opacity hover:opacity-90"
@@ -272,9 +342,13 @@ export default function HomePage() {
               viewport={{ once: true }}
               className="rounded-[30px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-8"
             >
-              <h3 className="text-2xl font-bold text-foreground">Hablemos de tu proyecto</h3>
+              <h3 className="text-2xl font-bold text-foreground">
+                Hablemos de tu proyecto
+              </h3>
+
               <p className="mt-4 leading-relaxed text-muted-foreground">
-                Podemos ayudarte a elegir la pieza adecuada para un ambiente puntual, una renovación completa o una propuesta comercial.
+                Podemos ayudarte a elegir la pieza adecuada para un ambiente puntual,
+                una renovación completa o una propuesta comercial.
               </p>
 
               <div className="mt-8 space-y-5">
@@ -293,7 +367,11 @@ export default function HomePage() {
               </div>
 
               <div className="mt-10 overflow-hidden rounded-[24px] border border-[hsl(var(--border))]">
-                <img src="/gallery/gallery-2.jpg" alt="Detalle de lámpara" className="h-56 w-full object-cover" />
+                <img
+                  src="/gallery/gallery-2.jpg"
+                  alt="Detalle de lámpara"
+                  className="h-56 w-full object-cover"
+                />
               </div>
             </motion.div>
           </div>

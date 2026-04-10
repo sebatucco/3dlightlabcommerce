@@ -20,9 +20,18 @@ export default function Header() {
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))/0.86] backdrop-blur-xl">
-      <div className="container mx-auto flex h-20 items-center gap-4 px-4">
-        <Link href="/#inicio" className="group flex items-center gap-3 transition-transform duration-300 hover:scale-[1.01]">
-          <Logo compact />
+      <div className="container mx-auto flex h-20 items-center gap-6 px-4">
+        <Link
+          href="/#inicio"
+          className="group shrink-0 transition-transform duration-300 hover:scale-[1.01]"
+          aria-label="Ir al inicio"
+        >
+          <div className="hidden sm:block">
+            <Logo />
+          </div>
+          <div className="sm:hidden">
+            <Logo compact />
+          </div>
         </Link>
 
         <div className="ml-auto flex items-center gap-3 md:gap-4">
