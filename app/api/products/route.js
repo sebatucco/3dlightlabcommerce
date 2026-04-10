@@ -7,7 +7,9 @@ export const dynamic = 'force-dynamic'
 function getSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
   if (!url || !key) return null
+
   return createClient(url, key)
 }
 
@@ -23,9 +25,12 @@ function slugifyCategory(value) {
 
 function normalizeCategoryRecord(category) {
   if (!category?.name && !category?.slug) return null
+
   const name = category?.name || category?.slug || ''
   const slug = category?.slug || slugifyCategory(name)
+
   if (!slug) return null
+
   return {
     id: category?.id || slug,
     name,
@@ -41,20 +46,36 @@ function normalizeProduct(product, categoryMap = new Map()) {
   const joinedCategory = Array.isArray(product?.categories)
     ? normalizeCategoryRecord(product.categories[0])
     : normalizeCategoryRecord(product?.categories)
+
   const categoryRow = mappedCategory || joinedCategory || null
 
-  const imageRows = Array.isArray(product?.product_images)
+  const mediaRows = Array.isArray(product?.product_images)
     ? [...product.product_images].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
     : []
 
-  const images = imageRows
+  const productImages = mediaRows
     .map((item) => ({
       id: item.id,
       image_url: item.image_url,
       alt_text: item.alt_text || product?.name || 'Producto',
       sort_order: item.sort_order ?? 0,
+      media_type: item.media_type || 'image',
+      use_case: item.use_case || null,
+      is_primary: Boolean(item.is_primary),
     }))
     .filter((item) => item.image_url)
+
+  const catalogImage =
+    productImages.find(
+      (item) => item.media_type === 'image' && item.use_case === 'catalog'
+    ) ||
+    productImages.find(
+      (item) => item.media_type === 'image' && item.is_primary === true
+    ) ||
+    productImages.find(
+      (item) => item.media_type === 'image'
+    ) ||
+    null
 
   const categoryName = categoryRow?.name || null
   const categorySlug = categoryRow?.slug || null
@@ -77,13 +98,21 @@ function normalizeProduct(product, categoryMap = new Map()) {
     category_slug: categorySlug,
     category_data: categoryRow
       ? {
-          id: categoryRow.id,
-          name: categoryRow.name,
-          slug: categoryRow.slug,
-        }
+        id: categoryRow.id,
+        name: categoryRow.name,
+        slug: categoryRow.slug,
+      }
       : null,
-    image: images[0]?.image_url || product?.image || product?.image_url || '',
-    images,
+    image: catalogImage?.image_url || '',
+    product_images: productImages,
+    images: productImages
+      .filter((item) => item.media_type === 'image')
+      .map((item) => ({
+        id: item.id,
+        image_url: item.image_url,
+        alt_text: item.alt_text,
+        sort_order: item.sort_order,
+      })),
     created_at: product.created_at || null,
   }
 }
@@ -98,11 +127,24 @@ function buildFallback(categoryFilter) {
     category_slug: slugifyCategory(product.category),
     category_data: product.category
       ? {
-          id: null,
-          name: product.category,
-          slug: slugifyCategory(product.category),
-        }
+        id: null,
+        name: product.category,
+        slug: slugifyCategory(product.category),
+      }
       : null,
+    product_images: product.image
+      ? [
+        {
+          id: null,
+          image_url: product.image,
+          alt_text: product.name,
+          sort_order: 0,
+          media_type: 'image',
+          use_case: 'catalog',
+          is_primary: true,
+        },
+      ]
+      : [],
     images: product.image
       ? [{ id: null, image_url: product.image, alt_text: product.name, sort_order: 0 }]
       : [],
@@ -111,6 +153,7 @@ function buildFallback(categoryFilter) {
   }))
 
   if (!categoryFilter) return products
+
   const value = slugifyCategory(categoryFilter)
   return products.filter((item) => item.category_slug === value)
 }
@@ -140,6 +183,7 @@ export async function GET(request) {
         .eq('active', true)
         .order('sort_order', { ascending: true })
         .order('name', { ascending: true }),
+
       supabase
         .from('products')
         .select(`
@@ -156,9 +200,8 @@ export async function GET(request) {
           featured,
           active,
           created_at,
-          image_url,
           categories ( id, name, slug, description, sort_order, active ),
-          product_images ( id, image_url, alt_text, sort_order )
+          product_images ( id, image_url, alt_text, sort_order, media_type, use_case, is_primary )
         `)
         .eq('active', true)
         .order('featured', { ascending: false })
@@ -189,7 +232,10 @@ export async function GET(request) {
       )
     }
 
-    const normalizedCategories = (categoriesResult.data || []).map(normalizeCategoryRecord).filter(Boolean)
+    const normalizedCategories = (categoriesResult.data || [])
+      .map(normalizeCategoryRecord)
+      .filter(Boolean)
+
     const categoryMap = new Map(normalizedCategories.map((category) => [category.id, category]))
 
     const normalizedProducts = Array.isArray(productsResult.data)
@@ -197,6 +243,7 @@ export async function GET(request) {
       : []
 
     const value = categoryFilter ? slugifyCategory(categoryFilter) : null
+
     const products = value
       ? normalizedProducts.filter((item) => item.category_slug === value)
       : normalizedProducts
