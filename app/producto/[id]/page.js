@@ -78,24 +78,27 @@ export default function ProductPage() {
       (item) => item?.media_type === 'image' && item?.use_case === 'detail'
     )
 
+    if (detail.length > 0) {
+      return detail
+    }
+
     const catalog = media.filter(
       (item) => item?.media_type === 'image' && item?.use_case === 'catalog'
     )
+
+    if (catalog.length > 0) {
+      return catalog
+    }
 
     const primary = media.filter(
       (item) => item?.media_type === 'image' && item?.is_primary === true
     )
 
-    const generic = media.filter((item) => item?.media_type === 'image')
+    if (primary.length > 0) {
+      return primary
+    }
 
-    const merged = [...detail, ...catalog, ...primary, ...generic]
-    const seen = new Set()
-
-    return merged.filter((item) => {
-      if (!item?.image_url || seen.has(item.image_url)) return false
-      seen.add(item.image_url)
-      return true
-    })
+    return media.filter((item) => item?.media_type === 'image')
   }, [media])
 
   const model3D = useMemo(() => {
@@ -230,8 +233,8 @@ export default function ProductPage() {
                       setViewMode('image')
                     }}
                     className={`flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border ${viewMode === 'image' && currentImage === index
-                        ? 'border-foreground bg-background'
-                        : 'border-border bg-card'
+                      ? 'border-foreground bg-background'
+                      : 'border-border bg-card'
                       }`}
                     type="button"
                   >
@@ -248,8 +251,8 @@ export default function ProductPage() {
                     type="button"
                     onClick={() => setViewMode('3d')}
                     className={`flex h-20 w-20 items-center justify-center rounded-xl border px-2 text-center text-xs font-medium ${viewMode === '3d'
-                        ? 'border-foreground bg-background text-foreground'
-                        : 'border-border bg-card text-muted-foreground'
+                      ? 'border-foreground bg-background text-foreground'
+                      : 'border-border bg-card text-muted-foreground'
                       }`}
                   >
                     Ver 3D
@@ -298,8 +301,8 @@ export default function ProductPage() {
                       key={variant}
                       onClick={() => setSelectedVariant(variant)}
                       className={`rounded-full px-4 py-2 text-sm ${selectedVariant === variant
-                          ? 'bg-foreground text-primary-foreground'
-                          : 'border border-border bg-secondary/40 text-foreground'
+                        ? 'bg-foreground text-primary-foreground'
+                        : 'border border-border bg-secondary/40 text-foreground'
                         }`}
                       type="button"
                     >
