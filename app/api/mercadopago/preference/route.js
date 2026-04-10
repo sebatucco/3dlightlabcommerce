@@ -38,6 +38,28 @@ export async function POST(req) {
 
     const accessToken =
       process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN
+    // TEST TOKEN MERCADO PAGO
+    const meResponse = await fetch('https://api.mercadopago.com/users/me', {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    const meRaw = await meResponse.text()
+
+    console.log('MP TEST STATUS:', meResponse.status)
+    console.log('MP TEST RESPONSE:', meRaw)
+
+    if (!meResponse.ok) {
+      return NextResponse.json(
+        {
+          error: 'Token de Mercado Pago inválido',
+          status: meResponse.status,
+          response: meRaw,
+        },
+        { status: 500 }
+      )
+    }
 
     if (!accessToken) {
       return NextResponse.json(
