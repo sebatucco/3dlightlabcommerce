@@ -6,8 +6,38 @@ import { useCart } from '@/lib/store'
 import { formatPrice } from '@/lib/mercadopago'
 import { siteConfig } from '@/lib/site'
 
+function getCatalogImage(product) {
+  const media = Array.isArray(product?.product_images) ? product.product_images : []
+
+  const sortedMedia = [...media].sort((a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0))
+
+  const catalogImage =
+    sortedMedia.find(
+      (item) => item?.media_type === 'image' && item?.use_case === 'catalog'
+    ) ||
+    sortedMedia.find(
+      (item) => item?.media_type === 'image' && item?.is_primary === true
+    ) ||
+    sortedMedia.find(
+      (item) => item?.media_type === 'image'
+    )
+
+  return catalogImage?.image_url || product?.image || product?.image_url || '/placeholder.jpg'
+}
+
+function getCategoryLabel(product) {
+  return (
+    product?.category_data?.name ||
+    product?.category ||
+    ''
+  )
+}
+
 export default function ProductCard({ product }) {
   const { addToCart, setIsOpen } = useCart()
+
+  const imageSrc = getCatalogImage(product)
+  const categoryLabel = getCategoryLabel(product)
 
   const handleAddToCart = (event) => {
     event.preventDefault()
@@ -20,7 +50,10 @@ export default function ProductCard({ product }) {
     event.preventDefault()
     event.stopPropagation()
     const message = `Hola! Me interesa este producto: ${product.name} - ${formatPrice(product.price)}`
-    window.open(`https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent(message)}`, '_blank')
+    window.open(
+      `https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent(message)}`,
+      '_blank'
+    )
   }
 
   return (
@@ -29,7 +62,7 @@ export default function ProductCard({ product }) {
         <article className="flex h-full flex-col overflow-hidden rounded-[28px] border border-[#e7dccd] bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg">
           <div className="relative h-56 w-full overflow-hidden bg-[#f7f1e8]">
             <img
-              src={product.image || '/placeholder.jpg'}
+              src={imageSrc}
               alt={product.name}
               className="h-full w-full object-cover transition duration-300 hover:scale-105"
             />
@@ -40,6 +73,7 @@ export default function ProductCard({ product }) {
                   Destacado
                 </span>
               ) : null}
+
               {product.stock === 0 ? (
                 <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-[#143047]">
                   Agotado
@@ -49,9 +83,9 @@ export default function ProductCard({ product }) {
           </div>
 
           <div className="flex flex-1 flex-col p-5">
-            {product.category ? (
+            {categoryLabel ? (
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d7b68]">
-                {product.category}
+                {categoryLabel}
               </p>
             ) : null}
 
@@ -60,7 +94,7 @@ export default function ProductCard({ product }) {
             </h3>
 
             <p className="mt-2 line-clamp-2 min-h-[48px] text-sm leading-6 text-[#6b7280]">
-              {product.description}
+              {product.short_description || product.description}
             </p>
 
             <div className="mt-4 flex items-end justify-between gap-3">
@@ -68,12 +102,15 @@ export default function ProductCard({ product }) {
                 <span className="text-xl font-bold text-[#b7793e]">
                   {formatPrice(product.price)}
                 </span>
-                {(product.originalPrice || product.compare_at_price) && (product.originalPrice || product.compare_at_price) > product.price ? (
+
+                {(product.originalPrice || product.compare_at_price) &&
+                  (product.originalPrice || product.compare_at_price) > product.price ? (
                   <p className="text-sm text-[#8b8b8b] line-through">
                     {formatPrice(product.originalPrice || product.compare_at_price)}
                   </p>
                 ) : null}
               </div>
+
               <span className="rounded-full bg-[#f7f1e8] px-3 py-1 text-xs font-semibold text-[#143047]">
                 Stock: {product.stock ?? 0}
               </span>

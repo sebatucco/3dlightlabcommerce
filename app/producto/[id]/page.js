@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ArrowLeft, MessageCircle, Minus, Plus, ShoppingCart } from 'lucide-react'
@@ -17,12 +17,20 @@ import { siteConfig } from '@/lib/site'
 export default function ProductPage() {
   const params = useParams()
   const { addToCart, setIsOpen } = useCart()
+
   const [product, setProduct] = useState(null)
   const [relatedProducts, setRelatedProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedVariant, setSelectedVariant] = useState(null)
   const [quantity, setQuantity] = useState(1)
   const [currentImage, setCurrentImage] = useState(0)
+  const [viewMode, setViewMode] = useState('image')
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !customElements.get('model-viewer')) {
+      import('@google/model-viewer')
+    }
+  }, [])
 
   useEffect(() => {
     async function fetchProduct() {
@@ -31,12 +39,17 @@ export default function ProductPage() {
         if (response.ok) {
           const data = await response.json()
           setProduct(data)
+
           if (data.variants?.length) setSelectedVariant(data.variants[0])
 
           const relatedResponse = await fetch(`/api/products?category=${data.category}`)
           if (relatedResponse.ok) {
             const relatedData = await relatedResponse.json()
-            setRelatedProducts((relatedData.products || []).filter((item) => item.id !== data.id).slice(0, 3))
+            setRelatedProducts(
+              (relatedData.products || [])
+                .filter((item) => item.id !== data.id)
+                .slice(0, 3)
+            )
           }
           return
         }
@@ -52,6 +65,63 @@ export default function ProductPage() {
     fetchProduct().finally(() => setLoading(false))
   }, [params.id])
 
+  const media = useMemo(() => {
+    if (!product?.product_images || !Array.isArray(product.product_images)) return []
+
+    return [...product.product_images].sort(
+      (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
+    )
+  }, [product])
+
+  const detailImages = useMemo(() => {
+    const detail = media.filter(
+      (item) => item?.media_type === 'image' && item?.use_case === 'detail'
+    )
+
+    const catalog = media.filter(
+      (item) => item?.media_type === 'image' && item?.use_case === 'catalog'
+    )
+
+    const primary = media.filter(
+      (item) => item?.media_type === 'image' && item?.is_primary === true
+    )
+
+    const generic = media.filter((item) => item?.media_type === 'image')
+
+    const merged = [...detail, ...catalog, ...primary, ...generic]
+    const seen = new Set()
+
+    return merged.filter((item) => {
+      if (!item?.image_url || seen.has(item.image_url)) return false
+      seen.add(item.image_url)
+      return true
+    })
+  }, [media])
+
+  const model3D = useMemo(() => {
+    return (
+      media.find(
+        (item) => item?.media_type === 'model' && item?.use_case === 'detail'
+      ) ||
+      media.find((item) => item?.media_type === 'model') ||
+      null
+    )
+  }, [media])
+
+  const fallbackImages = product?.images?.length
+    ? product.images.map((image) => ({ image_url: image, alt_text: product.name }))
+    : product?.image || product?.image_url
+      ? [{ image_url: product.image || product.image_url, alt_text: product.name }]
+      : []
+
+  const imagesToShow = detailImages.length > 0 ? detailImages : fallbackImages
+  const selectedImage = imagesToShow[currentImage]?.image_url || '/placeholder.jpg'
+
+  useEffect(() => {
+    setCurrentImage(0)
+    setViewMode('image')
+  }, [product?.id])
+
   const handleAddToCart = () => {
     if (!product) return
     addToCart(product, selectedVariant, quantity)
@@ -61,7 +131,10 @@ export default function ProductPage() {
   const handleWhatsApp = () => {
     if (!product) return
     const message = `Hola! Me interesa ${product.name}${selectedVariant ? ` (${selectedVariant})` : ''} - ${formatPrice(product.price)}`
-    window.open(`https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent(message)}`, '_blank')
+    window.open(
+      `https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent(message)}`,
+      '_blank'
+    )
   }
 
   if (loading) {
@@ -99,8 +172,6 @@ export default function ProductPage() {
     )
   }
 
-  const images = product.images?.length ? product.images : [product.image]
-
   return (
     <main className="min-h-screen bg-background text-foreground">
       <Header />
@@ -114,39 +185,109 @@ export default function ProductPage() {
         </Link>
 
         <div className="mt-8 grid gap-10 lg:grid-cols-[1fr_0.95fr]">
-          <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+          <motion.div
+            initial={{ opacity: 0, x: -24 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="space-y-4"
+          >
             <div className="overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-[hsl(var(--bone))]">
-                <img src={images[currentImage]} alt={product.name} className="h-4/5 w-4/5 object-contain" />
+                {viewMode === '3d' && model3D ? (
+                  <model-viewer
+                    src={model3D.image_url}
+                    alt={model3D.alt_text || product.name}
+                    auto-rotate
+                    camera-controls
+                    disable-zoom
+                    interaction-prompt="none"
+                    shadow-intensity="0"
+                    exposure="1"
+                    environment-image="neutral"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      backgroundColor: 'transparent',
+                      '--poster-color': 'transparent',
+                    }}
+                  />
+                ) : (
+                  <img
+                    src={selectedImage}
+                    alt={imagesToShow[currentImage]?.alt_text || product.name}
+                    className="h-4/5 w-4/5 object-contain"
+                  />
+                )}
               </div>
             </div>
-            {images.length > 1 && (
-              <div className="flex gap-3">
-                {images.map((image, index) => (
+
+            {(imagesToShow.length > 1 || model3D) && (
+              <div className="flex flex-wrap gap-3">
+                {imagesToShow.map((image, index) => (
                   <button
-                    key={`${image}-${index}`}
-                    onClick={() => setCurrentImage(index)}
-                    className={`flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border ${
-                      currentImage === index ? 'border-foreground bg-background' : 'border-border bg-card'
-                    }`}
+                    key={`${image.image_url}-${index}`}
+                    onClick={() => {
+                      setCurrentImage(index)
+                      setViewMode('image')
+                    }}
+                    className={`flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border ${viewMode === 'image' && currentImage === index
+                        ? 'border-foreground bg-background'
+                        : 'border-border bg-card'
+                      }`}
+                    type="button"
                   >
-                    <img src={image} alt="Miniatura" className="h-4/5 w-4/5 object-contain" />
+                    <img
+                      src={image.image_url}
+                      alt={image.alt_text || 'Miniatura'}
+                      className="h-4/5 w-4/5 object-contain"
+                    />
                   </button>
                 ))}
+
+                {model3D && (
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('3d')}
+                    className={`flex h-20 w-20 items-center justify-center rounded-xl border px-2 text-center text-xs font-medium ${viewMode === '3d'
+                        ? 'border-foreground bg-background text-foreground'
+                        : 'border-border bg-card text-muted-foreground'
+                      }`}
+                  >
+                    Ver 3D
+                  </button>
+                )}
               </div>
             )}
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="rounded-2xl border border-border bg-card p-8 shadow-sm">
-            {product.category && <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">{product.category}</p>}
-            <h1 className="mt-2 text-4xl font-semibold text-foreground md:text-5xl">{product.name}</h1>
+          <motion.div
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="rounded-2xl border border-border bg-card p-8 shadow-sm"
+          >
+            {product.category && (
+              <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">
+                {product.category}
+              </p>
+            )}
+
+            <h1 className="mt-2 text-4xl font-semibold text-foreground md:text-5xl">
+              {product.name}
+            </h1>
+
             <div className="mt-4 flex items-end gap-3">
-              <p className="text-3xl font-semibold text-foreground">{formatPrice(product.price)}</p>
+              <p className="text-3xl font-semibold text-foreground">
+                {formatPrice(product.price)}
+              </p>
               {product.originalPrice && product.originalPrice > product.price && (
-                <p className="pb-1 text-lg text-muted-foreground line-through">{formatPrice(product.originalPrice)}</p>
+                <p className="pb-1 text-lg text-muted-foreground line-through">
+                  {formatPrice(product.originalPrice)}
+                </p>
               )}
             </div>
-            <p className="mt-5 text-base leading-8 text-muted-foreground">{product.description}</p>
+
+            <p className="mt-5 text-base leading-8 text-muted-foreground">
+              {product.description}
+            </p>
 
             {product.variants?.length > 0 && (
               <div className="mt-8">
@@ -156,11 +297,11 @@ export default function ProductPage() {
                     <button
                       key={variant}
                       onClick={() => setSelectedVariant(variant)}
-                      className={`rounded-full px-4 py-2 text-sm ${
-                        selectedVariant === variant
+                      className={`rounded-full px-4 py-2 text-sm ${selectedVariant === variant
                           ? 'bg-foreground text-primary-foreground'
                           : 'border border-border bg-secondary/40 text-foreground'
-                      }`}
+                        }`}
+                      type="button"
                     >
                       {variant}
                     </button>
@@ -173,16 +314,21 @@ export default function ProductPage() {
               <button
                 onClick={() => setQuantity((value) => Math.max(1, value - 1))}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-accent"
+                type="button"
               >
                 <Minus className="h-4 w-4" />
               </button>
+
               <span className="w-8 text-center text-lg font-medium">{quantity}</span>
+
               <button
                 onClick={() => setQuantity((value) => value + 1)}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-accent"
+                type="button"
               >
                 <Plus className="h-4 w-4" />
               </button>
+
               <span className="ml-3 rounded-full bg-[hsl(var(--bone))] px-4 py-2 text-sm font-medium text-foreground">
                 Stock: {product.stock ?? 0}
               </span>
@@ -193,13 +339,16 @@ export default function ProductPage() {
                 onClick={handleAddToCart}
                 disabled={product.stock === 0}
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-foreground px-6 py-4 text-sm font-medium tracking-wide text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
               >
                 <ShoppingCart className="h-4 w-4" />
                 Agregar al carrito
               </button>
+
               <button
                 onClick={handleWhatsApp}
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-border px-6 py-4 text-sm font-medium tracking-wide text-foreground transition-colors hover:bg-accent"
+                type="button"
               >
                 <MessageCircle className="h-4 w-4" />
                 Consultar
@@ -210,7 +359,9 @@ export default function ProductPage() {
 
         {relatedProducts.length > 0 && (
           <section className="mt-20">
-            <h2 className="text-4xl font-bold text-foreground md:text-5xl">También te puede gustar</h2>
+            <h2 className="text-4xl font-bold text-foreground md:text-5xl">
+              También te puede gustar
+            </h2>
             <div className="mt-8 grid gap-8 md:grid-cols-2 xl:grid-cols-3">
               {relatedProducts.map((item, index) => (
                 <ProductCard key={item.id} product={item} index={index} />
