@@ -37,7 +37,12 @@ export async function POST(req) {
 
         const conversation = Array.isArray(messages)
             ? messages
-                .filter((m) => m && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant'))
+                .filter(
+                    (m) =>
+                        m &&
+                        typeof m.content === 'string' &&
+                        (m.role === 'user' || m.role === 'assistant')
+                )
                 .slice(-10)
             : []
 
@@ -63,30 +68,37 @@ export async function POST(req) {
                 Authorization: `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-                model: 'gpt-5.4-mini',
+                model: 'gpt-4.1-mini',
                 input,
-                temperature: 0.6,
             }),
         })
 
         const data = await response.json()
 
         if (!response.ok) {
+            console.error('OPENAI API ERROR:', data)
             return NextResponse.json(
                 {
                     error: data?.error?.message || 'Error al consultar OpenAI',
+                    details: data,
                 },
                 { status: 500 }
             )
         }
 
-        const reply =
-            data?.output_text ||
-            data?.output?.flatMap((item) => item?.content || [])?.find((part) => part?.type === 'output_text')?.text ||
-            'No pude generar una respuesta en este momento.'
+        const reply = data?.output_text?.trim()
+
+        if (!reply) {
+            console.error('OPENAI EMPTY RESPONSE:', data)
+            return NextResponse.json(
+                { error: 'OpenAI no devolvió texto de respuesta' },
+                { status: 500 }
+            )
+        }
 
         return NextResponse.json({ reply })
     } catch (error) {
+        console.error('CHAT ROUTE ERROR:', error)
         return NextResponse.json(
             { error: error?.message || 'Error interno del chat' },
             { status: 500 }

@@ -62,6 +62,7 @@ export default function ChatWidget() {
             const data = await response.json()
 
             if (!response.ok) {
+                console.error('CHAT API ERROR:', data)
                 throw new Error(data?.error || 'No se pudo obtener respuesta')
             }
 
@@ -74,6 +75,7 @@ export default function ChatWidget() {
                 },
             ])
         } catch (error) {
+            console.error('CHAT WIDGET ERROR:', error)
             setMessages((prev) => [
                 ...prev,
                 {
@@ -105,25 +107,30 @@ export default function ChatWidget() {
             <button
                 type="button"
                 onClick={() => setIsOpen((prev) => !prev)}
-                className="fixed bottom-24 right-5 z-[70] inline-flex h-14 w-14 items-center justify-center rounded-full bg-[hsl(var(--foreground))] text-[hsl(var(--primary-foreground))] shadow-[0_12px_30px_rgba(0,0,0,0.18)] transition hover:scale-105"
+                className="fixed bottom-24 right-4 z-[70] inline-flex h-14 w-14 items-center justify-center rounded-full bg-[hsl(var(--foreground))] text-[hsl(var(--primary-foreground))] shadow-[0_12px_30px_rgba(0,0,0,0.18)] transition hover:scale-105"
                 aria-label={isOpen ? 'Cerrar chat' : 'Abrir chat'}
             >
                 {isOpen ? <X className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
             </button>
 
             {isOpen && (
-                <div className="fixed bottom-40 right-5 z-[70] flex h-[560px] w-[calc(100vw-2rem)] max-w-[380px] flex-col overflow-hidden rounded-[28px] border border-[hsl(var(--border))] bg-white shadow-[0_24px_60px_rgba(20,48,71,0.16)]">
+                <div className="fixed inset-x-3 bottom-40 top-24 z-[70] flex flex-col overflow-hidden rounded-[28px] border border-[hsl(var(--border))] bg-white shadow-[0_24px_60px_rgba(20,48,71,0.16)] sm:inset-auto sm:bottom-40 sm:right-5 sm:top-auto sm:h-[560px] sm:w-[380px]">
                     <div className="flex items-center gap-3 border-b border-[hsl(var(--border))] bg-[hsl(var(--foreground))] px-5 py-4 text-[hsl(var(--primary-foreground))]">
                         <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10">
                             <Bot className="h-5 w-5" />
                         </div>
                         <div>
                             <p className="text-sm font-semibold">Asistente 3DLightLab</p>
-                            <p className="text-xs text-white/75">Consultas rápidas de compra y productos</p>
+                            <p className="text-xs text-white/75">
+                                Consultas rápidas de compra y productos
+                            </p>
                         </div>
                     </div>
 
-                    <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto bg-[#fcfaf6] px-4 py-4">
+                    <div
+                        ref={listRef}
+                        className="flex-1 space-y-4 overflow-y-auto bg-[#fcfaf6] px-4 py-4"
+                    >
                         {messages.map((message) => (
                             <div
                                 key={message.id}
