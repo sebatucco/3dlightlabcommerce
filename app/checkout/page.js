@@ -133,6 +133,7 @@ export default function CheckoutPage() {
         }
 
         const preference = await preferenceResponse.json()
+
         clearCart()
         window.location.href = preference.initPoint || preference.init_point
         return
@@ -190,10 +191,10 @@ export default function CheckoutPage() {
               <div
                 key={title}
                 className={`rounded-3xl border px-5 py-4 ${active
-                    ? 'border-[#143047] bg-white shadow-sm'
-                    : completed
-                      ? 'border-[#a7d9cb] bg-[#ecf8f4]'
-                      : 'border-[#d8cdb8] bg-[#f8f3ea]'
+                  ? 'border-[#143047] bg-white shadow-sm'
+                  : completed
+                    ? 'border-[#a7d9cb] bg-[#ecf8f4]'
+                    : 'border-[#d8cdb8] bg-[#f8f3ea]'
                   }`}
               >
                 <div className="flex items-center gap-3">

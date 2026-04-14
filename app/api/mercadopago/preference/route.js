@@ -38,32 +38,29 @@ export async function POST(req) {
 
     const accessToken =
       process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MERCADO_PAGO_ACCESS_TOKEN
-    // TEST TOKEN MERCADO PAGO
-    const meResponse = await fetch('https://api.mercadopago.com/users/me', {
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: 'Falta MERCADOPAGO_ACCESS_TOKEN' },
+        { status: 500 }
+      )
+    }
+
+    const testResponse = await fetch('https://api.mercadopago.com/users/me', {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
     })
 
-    const meRaw = await meResponse.text()
+    const testRaw = await testResponse.text()
 
-    console.log('MP TEST STATUS:', meResponse.status)
-    console.log('MP TEST RESPONSE:', meRaw)
-
-    if (!meResponse.ok) {
+    if (!testResponse.ok) {
       return NextResponse.json(
         {
           error: 'Token de Mercado Pago inválido',
-          status: meResponse.status,
-          response: meRaw,
+          status: testResponse.status,
+          response: testRaw,
         },
-        { status: 500 }
-      )
-    }
-
-    if (!accessToken) {
-      return NextResponse.json(
-        { error: 'Falta MERCADOPAGO_ACCESS_TOKEN' },
         { status: 500 }
       )
     }
@@ -78,12 +75,15 @@ export async function POST(req) {
         unit_price: Number(item.unit_price),
         currency_id: 'ARS',
       })),
+
       external_reference: order.external_reference || order.id,
+
       back_urls: {
-        success: `${siteUrl}/checkout/success`,
-        failure: `${siteUrl}/checkout/failure`,
-        pending: `${siteUrl}/checkout/pending`,
+        success: `${siteUrl}/checkout/success?orderId=${order.id}`,
+        failure: `${siteUrl}/checkout/failure?orderId=${order.id}`,
+        pending: `${siteUrl}/checkout/pending?orderId=${order.id}`,
       },
+
       auto_return: 'approved',
     }
 
@@ -127,16 +127,29 @@ export async function POST(req) {
       )
     }
 
-    await supabase
+    const { error: updateError } = await supabase
       .from('orders')
-      .update({ mp_preference_id: result.id })
+      .update({
+        mp_preference_id: result.id,
+      })
       .eq('id', orderId)
+
+    if (updateError) {
+      return NextResponse.json(
+        {
+          error: 'La preferencia se creó, pero no se pudo guardar en la orden',
+          details: updateError,
+        },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({
       ok: true,
       preferenceId: result.id,
       initPoint: result.init_point,
       init_point: result.init_point,
+      sandbox_init_point: result.sandbox_init_point ?? null,
     })
   } catch (error) {
     return NextResponse.json(

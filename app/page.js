@@ -21,6 +21,8 @@ import CatalogClient from '@/components/CatalogClient'
 import { siteConfig } from '@/lib/site'
 import ImageCarousel from '@/components/ImageCarousel'
 import HeroBag3D from '@/components/HeroBag3D'
+import ChatWidget from '@/components/ChatWidget'
+
 
 const features = [
   {
@@ -377,7 +379,7 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-
+      <ChatWidget />
       <Footer />
     </div>
   )
