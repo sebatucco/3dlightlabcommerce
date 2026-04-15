@@ -102,19 +102,26 @@ async function callGroq(input) {
         throw new Error('Falta GROQ_API_KEY')
     }
 
-    const response = await fetch('https://api.groq.com/openai/v1/responses', {
+    const messages = input.map((item) => ({
+        role: item.role,
+        content: item.content,
+    }))
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-            model: 'openai/gpt-oss-20b',
-            input,
+            model: 'llama-3.1-8b-instant',
+            messages,
+            temperature: 0.4,
         }),
     })
 
     const data = await response.json().catch(() => ({}))
+    console.log('GROQ RAW RESPONSE:', JSON.stringify(data, null, 2))
 
     if (!response.ok) {
         const err = new Error(data?.error?.message || 'Error al consultar Groq')
@@ -125,7 +132,23 @@ async function callGroq(input) {
         throw err
     }
 
-    const reply = data?.output_text?.trim()
+    const firstChoice = data?.choices?.[0]
+    const content = firstChoice?.message?.content
+
+    let reply = ''
+
+    if (typeof content === 'string') {
+        reply = content.trim()
+    } else if (Array.isArray(content)) {
+        reply = content
+            .map((part) => {
+                if (typeof part === 'string') return part
+                if (part?.type === 'text') return part?.text || ''
+                return ''
+            })
+            .join('\n')
+            .trim()
+    }
 
     if (!reply) {
         const err = new Error('Groq no devolvió texto de respuesta')
