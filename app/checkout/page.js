@@ -87,10 +87,13 @@ export default function CheckoutPage() {
 
 
   const handleFinalizePurchase = async () => {
+    if (isLoading) return
+
     setIsLoading(true)
     setError('')
 
     try {
+      // 1. Crear orden
       const orderResponse = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -102,13 +105,15 @@ export default function CheckoutPage() {
         }),
       })
 
+      const orderData = await orderResponse.json().catch(() => ({}))
+
       if (!orderResponse.ok) {
-        const data = await orderResponse.json().catch(() => ({}))
-        throw new Error(data.error || 'No se pudo crear el pedido')
+        throw new Error(orderData.error || 'No se pudo crear el pedido')
       }
 
-      const order = await orderResponse.json()
+      const order = orderData
 
+      // 2. MERCADO PAGO
       if (paymentMethod === 'mercadopago') {
         const preferenceResponse = await fetch('/api/mercadopago/preference', {
           method: 'POST',
@@ -127,30 +132,39 @@ export default function CheckoutPage() {
           }),
         })
 
+        const prefData = await preferenceResponse.json().catch(() => ({}))
+
         if (!preferenceResponse.ok) {
-          const data = await preferenceResponse.json().catch(() => ({}))
-          throw new Error(data.error || 'No se pudo iniciar el pago')
+          throw new Error(prefData.error || 'No se pudo iniciar el pago')
         }
 
-        const preference = await preferenceResponse.json()
-
         clearCart()
-        window.location.href = preference.initPoint || preference.init_point
+
+        window.location.href = prefData.initPoint || prefData.init_point
         return
       }
 
+      // 3. TRANSFERENCIA
       if (paymentMethod === 'transfer') {
         clearCart()
+
         router.push(`/checkout/transfer?orderId=${order.id}`)
         return
       }
 
+      // 4. WHATSAPP
       if (paymentMethod === 'whatsapp') {
-        window.open(`https://wa.me/${siteConfig.whatsappNumber}?text=${buildWhatsAppOrderMessage(order.id)}`, '_blank')
+        window.open(
+          `https://wa.me/${siteConfig.whatsappNumber}?text=${buildWhatsAppOrderMessage(order.id)}`,
+          '_blank'
+        )
+
         clearCart()
         router.push(`/checkout/pending?orderId=${order.id}`)
+        return
       }
     } catch (err) {
+      console.error('Checkout error:', err)
       setError(err.message || 'Ocurrió un error inesperado')
     } finally {
       setIsLoading(false)
@@ -383,6 +397,39 @@ export default function CheckoutPage() {
                     )
                   })}
                 </div>
+                {paymentMethod === 'transfer' && (
+                  <div className="mt-5 rounded-3xl border border-[#d8cdb8] bg-[#f8f3ea] p-5">
+                    <h3 className="text-base font-extrabold text-[#143047]">
+                      Vas a ver los datos bancarios en el siguiente paso
+                    </h3>
+                    <p className="mt-2 text-sm leading-7 text-[#4e6475]">
+                      Al continuar, generamos tu pedido y te mostramos el alias, CBU y titular
+                      para que puedas hacer la transferencia. Después vas a poder enviarnos el
+                      comprobante por WhatsApp.
+                    </p>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-[#e6dcc8] bg-white p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                          Alias
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[#143047]">
+                          {siteConfig.bankInfo?.alias || 'No configurado'}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border border-[#e6dcc8] bg-white p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                          Titular
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[#143047]">
+                          {siteConfig.bankInfo?.titular || 'No configurado'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
 
                 {error && <p className="mt-4 rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b44a42]">{error}</p>}
 
@@ -400,8 +447,27 @@ export default function CheckoutPage() {
                     disabled={isLoading}
                     className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#143047] px-6 py-4 text-sm font-bold uppercase tracking-[0.16em] text-white transition hover:bg-[#214a69] disabled:cursor-not-allowed disabled:opacity-70"
                   >
+                    {!isLoading && (
+                      paymentMethod === 'transfer' ? (
+                        <Building2 className="h-4 w-4" />
+                      ) : paymentMethod === 'mercadopago' ? (
+                        <CreditCard className="h-4 w-4" />
+                      ) : (
+                        <MessageCircle className="h-4 w-4" />
+                      )
+                    )}
+
                     {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {isLoading ? 'Procesando...' : 'Finalizar compra'}
+
+                    {isLoading
+                      ? paymentMethod === 'transfer'
+                        ? 'Abriendo datos bancarios...'
+                        : 'Procesando...'
+                      : paymentMethod === 'mercadopago'
+                        ? 'Ir a pagar con Mercado Pago'
+                        : paymentMethod === 'transfer'
+                          ? 'Ver datos bancarios'
+                          : 'Finalizar por WhatsApp'}
                   </button>
                 </div>
               </motion.div>

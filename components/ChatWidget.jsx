@@ -1,8 +1,63 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { Bot, MessageCircle, Send, X } from 'lucide-react'
 import { siteConfig } from '@/lib/site'
+
+function formatPrice(value) {
+    const amount = Number(value || 0)
+    return new Intl.NumberFormat('es-AR', {
+        style: 'currency',
+        currency: 'ARS',
+        maximumFractionDigits: 0,
+    }).format(amount)
+}
+
+function ProductChatCard({ product }) {
+    return (
+        <Link
+            href={`/producto/${product.slug || product.id}`}
+            className="block rounded-2xl border border-[#e7dccd] bg-white p-3 transition hover:shadow-md"
+        >
+            <div className="flex gap-3">
+                <div className="h-20 w-20 overflow-hidden rounded-xl bg-[#f7f1e8]">
+                    <img
+                        src={product.image_url || '/placeholder.jpg'}
+                        alt={product.name}
+                        className="h-full w-full object-cover"
+                    />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm font-bold text-[#143047]">
+                        {product.name}
+                    </p>
+
+                    {product.short_description ? (
+                        <p className="mt-1 line-clamp-2 text-xs text-[#6b7280]">
+                            {product.short_description}
+                        </p>
+                    ) : null}
+
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className="text-sm font-extrabold text-[#b7793e]">
+                            {formatPrice(product.price)}
+                        </span>
+
+                        <span className="rounded-full bg-[#f7f1e8] px-2 py-1 text-[11px] font-semibold text-[#143047]">
+                            Stock: {product.stock ?? 0}
+                        </span>
+                    </div>
+
+                    <span className="mt-2 inline-block text-xs font-semibold text-[#5e89a6]">
+                        Ver producto
+                    </span>
+                </div>
+            </div>
+        </Link>
+    )
+}
 
 export default function ChatWidget() {
     const [isOpen, setIsOpen] = useState(false)
@@ -14,6 +69,7 @@ export default function ChatWidget() {
             role: 'assistant',
             content:
                 'Hola 👋 Soy el asistente de 3DLightLab. Si estás buscando una lámpara o tenés alguna duda, te ayudo.',
+            products: [],
         },
     ])
 
@@ -32,6 +88,7 @@ export default function ChatWidget() {
             id: crypto.randomUUID(),
             role: 'user',
             content: trimmed,
+            products: [],
         }
 
         const nextMessages = [...messages, userMessage]
@@ -55,7 +112,6 @@ export default function ChatWidget() {
             const data = await response.json()
 
             if (!response.ok) {
-                console.error('CHAT API ERROR:', data)
                 throw new Error(data?.error || 'No se pudo obtener respuesta')
             }
 
@@ -65,10 +121,10 @@ export default function ChatWidget() {
                     id: crypto.randomUUID(),
                     role: 'assistant',
                     content: data.reply,
+                    products: Array.isArray(data.products) ? data.products : [],
                 },
             ])
-        } catch (error) {
-            console.error('CHAT WIDGET ERROR:', error)
+        } catch {
             setMessages((prev) => [
                 ...prev,
                 {
@@ -76,6 +132,7 @@ export default function ChatWidget() {
                     role: 'assistant',
                     content:
                         'Hubo un problema para responder ahora mismo. Podés escribirnos por WhatsApp y te ayudamos enseguida.',
+                    products: [],
                 },
             ])
         } finally {
@@ -107,7 +164,7 @@ export default function ChatWidget() {
             </button>
 
             {isOpen && (
-                <div className="fixed bottom-20 right-3 z-[70] flex h-[min(78vh,620px)] w-[min(calc(100vw-1.5rem),360px)] flex-col overflow-hidden rounded-[22px] border border-[hsl(var(--border))] bg-white shadow-[0_24px_60px_rgba(20,48,71,0.16)] sm:bottom-24 sm:right-4 sm:w-[360px] lg:w-[380px]">
+                <div className="fixed bottom-20 right-3 z-[70] flex h-[min(72vh,560px)] w-[min(calc(100vw-1.5rem),350px)] flex-col overflow-hidden rounded-[22px] border border-[hsl(var(--border))] bg-white shadow-[0_24px_60px_rgba(20,48,71,0.16)] sm:bottom-24 sm:right-4 sm:w-[350px] lg:w-[380px]">
                     <div className="flex items-center gap-3 border-b border-[hsl(var(--border))] bg-[hsl(var(--foreground))] px-4 py-3 text-[hsl(var(--primary-foreground))] sm:px-5 sm:py-4">
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 sm:h-11 sm:w-11">
                             <Bot className="h-5 w-5" />
@@ -115,7 +172,7 @@ export default function ChatWidget() {
                         <div className="min-w-0">
                             <p className="truncate text-sm font-semibold">Asistente 3DLightLab</p>
                             <p className="truncate text-[11px] text-white/75 sm:text-xs">
-                                Consultas rápidas de compra y productos
+                                Te ayudo a encontrar productos
                             </p>
                         </div>
                     </div>
@@ -125,18 +182,25 @@ export default function ChatWidget() {
                         className="flex-1 space-y-3 overflow-y-auto bg-[#fcfaf6] px-3 py-3 sm:space-y-4 sm:px-4 sm:py-4"
                     >
                         {messages.map((message) => (
-                            <div
-                                key={message.id}
-                                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div
-                                    className={`max-w-[88%] rounded-3xl px-3 py-2.5 text-sm leading-6 sm:max-w-[85%] sm:px-4 sm:py-3 ${message.role === 'user'
-                                        ? 'bg-[hsl(var(--foreground))] text-[hsl(var(--primary-foreground))]'
-                                        : 'border border-[#e9dfd0] bg-white text-[#143047]'
-                                        }`}
-                                >
-                                    {message.content}
+                            <div key={message.id}>
+                                <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                    <div
+                                        className={`max-w-[88%] rounded-3xl px-3 py-2.5 text-sm leading-6 sm:max-w-[85%] sm:px-4 sm:py-3 ${message.role === 'user'
+                                                ? 'bg-[hsl(var(--foreground))] text-[hsl(var(--primary-foreground))]'
+                                                : 'border border-[#e9dfd0] bg-white text-[#143047]'
+                                            }`}
+                                    >
+                                        {message.content}
+                                    </div>
                                 </div>
+
+                                {message.role === 'assistant' && Array.isArray(message.products) && message.products.length > 0 && (
+                                    <div className="mt-3 space-y-3">
+                                        {message.products.map((product) => (
+                                            <ProductChatCard key={product.id} product={product} />
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ))}
 

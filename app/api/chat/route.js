@@ -13,10 +13,9 @@ Reglas:
 - No inventes precios, stock ni datos concretos.
 - Si te paso productos encontrados en base de datos, usá SOLO esos datos para hablar de precios y stock.
 - Si no hay coincidencias claras, decí que no encontraste una coincidencia exacta y sugerí consultar por WhatsApp.
-- Si no sabés stock exacto, decí que puede variar y sugerí confirmar antes de comprar.
-- Si te preguntan algo complejo o muy específico, sugerí continuar por WhatsApp.
+- Respondé como un vendedor útil: recomendá opciones concretas cuando existan.
+- Si el usuario pide recomendaciones, sugerí hasta 3 productos relevantes.
 - No hables de política, medicina ni temas ajenos a la tienda.
-- Priorizá ayudar con: pagos, envíos, tiempos de producción, materiales, personalización y recomendaciones de productos.
 `
 
 function getSupabaseClient() {
@@ -48,7 +47,11 @@ function maybeProductQuestion(message) {
         text.includes('tienen') ||
         text.includes('disponible') ||
         text.includes('lampara') ||
-        text.includes('producto')
+        text.includes('producto') ||
+        text.includes('recomendas') ||
+        text.includes('recomiendes') ||
+        text.includes('quiero') ||
+        text.includes('busco')
     )
 }
 
@@ -58,7 +61,20 @@ function buildSearchTerms(message) {
         .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
         .split(/\s+/)
         .filter((word) => word.length >= 3)
-        .slice(0, 8)
+        .slice(0, 10)
+}
+
+function getCatalogImage(product) {
+    const media = Array.isArray(product?.product_images) ? [...product.product_images] : []
+    media.sort((a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0))
+
+    const image =
+        media.find((item) => item?.media_type === 'image' && item?.use_case === 'catalog') ||
+        media.find((item) => item?.media_type === 'image' && item?.is_primary === true) ||
+        media.find((item) => item?.media_type === 'image') ||
+        null
+
+    return image?.image_url || '/placeholder.jpg'
 }
 
 async function findRelevantProducts(message) {
@@ -92,11 +108,11 @@ async function findRelevantProducts(message) {
       )
     `)
         .eq('active', true)
-        .limit(20)
+        .limit(24)
 
     if (error || !Array.isArray(data)) return []
 
-    const scored = data
+    return data
         .map((product) => {
             const haystack = normalizeText(
                 `${product.name} ${product.short_description || ''} ${product.description || ''}`
@@ -107,14 +123,24 @@ async function findRelevantProducts(message) {
                 if (haystack.includes(term)) score += 1
             }
 
+            if (product.featured) score += 0.25
+
             return { product, score }
         })
         .filter((item) => item.score > 0)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 4)
-        .map((item) => item.product)
-
-    return scored
+        .slice(0, 3)
+        .map(({ product }) => ({
+            id: product.id,
+            name: product.name,
+            slug: product.slug || product.id,
+            short_description: product.short_description || '',
+            price: Number(product.price || 0),
+            compare_at_price:
+                product.compare_at_price == null ? null : Number(product.compare_at_price),
+            stock: Number(product.stock ?? 0),
+            image_url: getCatalogImage(product),
+        }))
 }
 
 function buildProductContext(products) {
@@ -125,9 +151,9 @@ function buildProductContext(products) {
             `Producto ${index + 1}:`,
             `- Nombre: ${product.name}`,
             `- Slug: ${product.slug}`,
-            `- Precio: ${Number(product.price || 0)}`,
-            `- Precio anterior: ${product.compare_at_price ? Number(product.compare_at_price) : 'sin dato'}`,
-            `- Stock: ${Number(product.stock ?? 0)}`,
+            `- Precio: ${product.price}`,
+            `- Precio anterior: ${product.compare_at_price ?? 'sin dato'}`,
+            `- Stock: ${product.stock}`,
             `- Descripción breve: ${product.short_description || 'sin dato'}`,
         ].join('\n')
     })
@@ -244,23 +270,8 @@ async function callGroq(input) {
         throw err
     }
 
-    const firstChoice = data?.choices?.[0]
-    const content = firstChoice?.message?.content
-
-    let reply = ''
-
-    if (typeof content === 'string') {
-        reply = content.trim()
-    } else if (Array.isArray(content)) {
-        reply = content
-            .map((part) => {
-                if (typeof part === 'string') return part
-                if (part?.type === 'text') return part?.text || ''
-                return ''
-            })
-            .join('\n')
-            .trim()
-    }
+    const content = data?.choices?.[0]?.message?.content
+    const reply = typeof content === 'string' ? content.trim() : ''
 
     if (!reply) {
         const err = new Error('Groq no devolvió texto de respuesta')
@@ -299,13 +310,13 @@ export async function POST(req) {
             return NextResponse.json({ error: 'Falta message' }, { status: 400 })
         }
 
-        let productContext = ''
+        let products = []
 
         if (maybeProductQuestion(message)) {
-            const products = await findRelevantProducts(message)
-            productContext = buildProductContext(products)
+            products = await findRelevantProducts(message)
         }
 
+        const productContext = buildProductContext(products)
         const input = buildInput(message, messages, productContext)
 
         try {
@@ -313,6 +324,7 @@ export async function POST(req) {
             return NextResponse.json({
                 reply: result.reply,
                 provider: result.provider,
+                products,
             })
         } catch (openaiError) {
             if (!shouldFallbackToGroq(openaiError)) {
@@ -325,6 +337,7 @@ export async function POST(req) {
                 reply: groqResult.reply,
                 provider: groqResult.provider,
                 fallback: true,
+                products,
             })
         }
     } catch (error) {
