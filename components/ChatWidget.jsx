@@ -4,13 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Bot, MessageCircle, Send, X } from 'lucide-react'
 import { siteConfig } from '@/lib/site'
 
-const QUICK_QUESTIONS = [
-    '¿Qué medios de pago aceptan?',
-    '¿Hacen envíos a todo el país?',
-    '¿Cuánto tarda la producción?',
-    '¿Qué material usan?',
-]
-
 export default function ChatWidget() {
     const [isOpen, setIsOpen] = useState(false)
     const [input, setInput] = useState('')
@@ -20,7 +13,7 @@ export default function ChatWidget() {
             id: 'welcome',
             role: 'assistant',
             content:
-                'Hola, soy el asistente de 3DLightLab. Puedo ayudarte con envíos, pagos, tiempos de producción, materiales y productos.',
+                'Hola 👋 Soy el asistente de 3DLightLab. Si estás buscando una lámpara o tenés alguna duda, te ayudo.',
         },
     ])
 
@@ -157,19 +150,6 @@ export default function ChatWidget() {
                     </div>
 
                     <div className="border-t border-[hsl(var(--border))] bg-white px-3 py-3 sm:px-4 sm:py-4">
-                        <div className="mb-3 flex flex-wrap gap-2">
-                            {QUICK_QUESTIONS.map((question) => (
-                                <button
-                                    key={question}
-                                    type="button"
-                                    onClick={() => sendMessage(question)}
-                                    className="rounded-full border border-[#ddd2c2] bg-[#f8f3ea] px-3 py-2 text-[11px] text-[#143047] transition hover:bg-white sm:text-xs"
-                                >
-                                    {question}
-                                </button>
-                            ))}
-                        </div>
-
                         <form onSubmit={handleSubmit} className="flex gap-2">
                             <input
                                 type="text"
