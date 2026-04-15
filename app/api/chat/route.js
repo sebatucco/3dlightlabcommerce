@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
@@ -9,20 +10,132 @@ Tu objetivo es ayudar a potenciales clientes a comprar.
 Reglas:
 - Respondé en español.
 - Sé cálido, claro y breve.
-- No inventes datos específicos que no te hayan dado.
-- Si no sabés stock exacto, decí que puede variar y sugerí consultar antes de comprar.
+- No inventes precios, stock ni datos concretos.
+- Si te paso productos encontrados en base de datos, usá SOLO esos datos para hablar de precios y stock.
+- Si no hay coincidencias claras, decí que no encontraste una coincidencia exacta y sugerí consultar por WhatsApp.
+- Si no sabés stock exacto, decí que puede variar y sugerí confirmar antes de comprar.
 - Si te preguntan algo complejo o muy específico, sugerí continuar por WhatsApp.
 - No hables de política, medicina ni temas ajenos a la tienda.
 - Priorizá ayudar con: pagos, envíos, tiempos de producción, materiales, personalización y recomendaciones de productos.
-
-Información base de la tienda:
-- Se venden lámparas y objetos decorativos impresos en 3D.
-- Se aceptan medios de pago online y también puede haber coordinación por WhatsApp.
-- Los tiempos de producción pueden variar según el producto y la demanda.
-- Se pueden resolver consultas de envíos, materiales, cuidados del producto y recomendaciones.
 `
 
-function buildInput(message, messages = []) {
+function getSupabaseClient() {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key =
+        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!url || !key) return null
+    return createClient(url, key, { auth: { persistSession: false } })
+}
+
+function normalizeText(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .trim()
+}
+
+function maybeProductQuestion(message) {
+    const text = normalizeText(message)
+
+    return (
+        text.includes('precio') ||
+        text.includes('stock') ||
+        text.includes('cuesta') ||
+        text.includes('sale') ||
+        text.includes('tenes') ||
+        text.includes('tienen') ||
+        text.includes('disponible') ||
+        text.includes('lampara') ||
+        text.includes('producto')
+    )
+}
+
+function buildSearchTerms(message) {
+    const text = normalizeText(message)
+    return text
+        .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+        .split(/\s+/)
+        .filter((word) => word.length >= 3)
+        .slice(0, 8)
+}
+
+async function findRelevantProducts(message) {
+    const supabase = getSupabaseClient()
+    if (!supabase) return []
+
+    const terms = buildSearchTerms(message)
+    if (terms.length === 0) return []
+
+    const { data, error } = await supabase
+        .from('products')
+        .select(`
+      id,
+      name,
+      slug,
+      short_description,
+      description,
+      price,
+      compare_at_price,
+      stock,
+      featured,
+      active,
+      product_images (
+        id,
+        image_url,
+        alt_text,
+        sort_order,
+        media_type,
+        use_case,
+        is_primary
+      )
+    `)
+        .eq('active', true)
+        .limit(20)
+
+    if (error || !Array.isArray(data)) return []
+
+    const scored = data
+        .map((product) => {
+            const haystack = normalizeText(
+                `${product.name} ${product.short_description || ''} ${product.description || ''}`
+            )
+
+            let score = 0
+            for (const term of terms) {
+                if (haystack.includes(term)) score += 1
+            }
+
+            return { product, score }
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 4)
+        .map((item) => item.product)
+
+    return scored
+}
+
+function buildProductContext(products) {
+    if (!products.length) return ''
+
+    const lines = products.map((product, index) => {
+        return [
+            `Producto ${index + 1}:`,
+            `- Nombre: ${product.name}`,
+            `- Slug: ${product.slug}`,
+            `- Precio: ${Number(product.price || 0)}`,
+            `- Precio anterior: ${product.compare_at_price ? Number(product.compare_at_price) : 'sin dato'}`,
+            `- Stock: ${Number(product.stock ?? 0)}`,
+            `- Descripción breve: ${product.short_description || 'sin dato'}`,
+        ].join('\n')
+    })
+
+    return `\n\nProductos encontrados en base de datos:\n${lines.join('\n\n')}`
+}
+
+function buildInput(message, messages = [], productContext = '') {
     const conversation = Array.isArray(messages)
         ? messages
             .filter(
@@ -37,7 +150,7 @@ function buildInput(message, messages = []) {
     return [
         {
             role: 'system',
-            content: STORE_CONTEXT,
+            content: `${STORE_CONTEXT}${productContext}`,
         },
         ...conversation.map((m) => ({
             role: m.role,
@@ -121,7 +234,6 @@ async function callGroq(input) {
     })
 
     const data = await response.json().catch(() => ({}))
-    console.log('GROQ RAW RESPONSE:', JSON.stringify(data, null, 2))
 
     if (!response.ok) {
         const err = new Error(data?.error?.message || 'Error al consultar Groq')
@@ -187,7 +299,14 @@ export async function POST(req) {
             return NextResponse.json({ error: 'Falta message' }, { status: 400 })
         }
 
-        const input = buildInput(message, messages)
+        let productContext = ''
+
+        if (maybeProductQuestion(message)) {
+            const products = await findRelevantProducts(message)
+            productContext = buildProductContext(products)
+        }
+
+        const input = buildInput(message, messages, productContext)
 
         try {
             const result = await callOpenAI(input)
@@ -196,8 +315,6 @@ export async function POST(req) {
                 provider: result.provider,
             })
         } catch (openaiError) {
-            console.error('OPENAI ERROR:', openaiError?.message, openaiError?.details)
-
             if (!shouldFallbackToGroq(openaiError)) {
                 throw openaiError
             }
@@ -211,8 +328,6 @@ export async function POST(req) {
             })
         }
     } catch (error) {
-        console.error('CHAT ROUTE ERROR:', error)
-
         return NextResponse.json(
             {
                 error: error?.message || 'Error interno del chat',

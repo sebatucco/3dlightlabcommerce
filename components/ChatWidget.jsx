@@ -107,14 +107,14 @@ export default function ChatWidget() {
             <button
                 type="button"
                 onClick={() => setIsOpen((prev) => !prev)}
-                className="fixed bottom-20 right-4 z-[70] inline-flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--foreground))] text-[hsl(var(--primary-foreground))] shadow-[0_12px_30px_rgba(0,0,0,0.18)] transition hover:scale-105 sm:bottom-24 sm:h-14 sm:w-14"
+                className="fixed bottom-5 right-3 z-[70] inline-flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--foreground))] text-[hsl(var(--primary-foreground))] shadow-[0_12px_30px_rgba(0,0,0,0.18)] transition hover:scale-105 sm:bottom-6 sm:right-4 sm:h-14 sm:w-14"
                 aria-label={isOpen ? 'Cerrar chat' : 'Abrir chat'}
             >
                 {isOpen ? <X className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
             </button>
 
             {isOpen && (
-                <div className="fixed inset-x-2 bottom-16 top-16 z-[70] flex flex-col overflow-hidden rounded-[22px] border border-[hsl(var(--border))] bg-white shadow-[0_24px_60px_rgba(20,48,71,0.16)] sm:inset-auto sm:bottom-40 sm:right-5 sm:top-auto sm:h-[560px] sm:w-[380px] sm:rounded-[28px]">
+                <div className="fixed bottom-20 right-3 z-[70] flex h-[min(78vh,620px)] w-[min(calc(100vw-1.5rem),360px)] flex-col overflow-hidden rounded-[22px] border border-[hsl(var(--border))] bg-white shadow-[0_24px_60px_rgba(20,48,71,0.16)] sm:bottom-24 sm:right-4 sm:w-[360px] lg:w-[380px]">
                     <div className="flex items-center gap-3 border-b border-[hsl(var(--border))] bg-[hsl(var(--foreground))] px-4 py-3 text-[hsl(var(--primary-foreground))] sm:px-5 sm:py-4">
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 sm:h-11 sm:w-11">
                             <Bot className="h-5 w-5" />
@@ -138,8 +138,8 @@ export default function ChatWidget() {
                             >
                                 <div
                                     className={`max-w-[88%] rounded-3xl px-3 py-2.5 text-sm leading-6 sm:max-w-[85%] sm:px-4 sm:py-3 ${message.role === 'user'
-                                            ? 'bg-[hsl(var(--foreground))] text-[hsl(var(--primary-foreground))]'
-                                            : 'border border-[#e9dfd0] bg-white text-[#143047]'
+                                        ? 'bg-[hsl(var(--foreground))] text-[hsl(var(--primary-foreground))]'
+                                        : 'border border-[#e9dfd0] bg-white text-[#143047]'
                                         }`}
                                 >
                                     {message.content}
