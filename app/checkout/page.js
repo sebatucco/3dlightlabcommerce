@@ -29,6 +29,7 @@ export default function CheckoutPage() {
   const { cart, total, clearCart } = useCart()
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
+  const [isLeavingCheckout, setIsLeavingCheckout] = useState(false)
   const [error, setError] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('mercadopago')
 
@@ -51,10 +52,10 @@ export default function CheckoutPage() {
   })
 
   useEffect(() => {
-    if (cart.length === 0) {
+    if (!isLeavingCheckout && cart.length === 0) {
       router.push('/')
     }
-  }, [cart, router])
+  }, [cart, router, isLeavingCheckout])
 
   const handleCustomerSubmit = (e) => {
     e.preventDefault()
@@ -85,7 +86,6 @@ export default function CheckoutPage() {
     return encodeURIComponent(lines.join(String.fromCharCode(10)))
   }
 
-
   const handleFinalizePurchase = async () => {
     if (isLoading) return
 
@@ -93,7 +93,6 @@ export default function CheckoutPage() {
     setError('')
 
     try {
-      // 1. Crear orden
       const orderResponse = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,7 +112,6 @@ export default function CheckoutPage() {
 
       const order = orderData
 
-      // 2. MERCADO PAGO
       if (paymentMethod === 'mercadopago') {
         const preferenceResponse = await fetch('/api/mercadopago/preference', {
           method: 'POST',
@@ -138,27 +136,26 @@ export default function CheckoutPage() {
           throw new Error(prefData.error || 'No se pudo iniciar el pago')
         }
 
+        setIsLeavingCheckout(true)
         clearCart()
-
         window.location.href = prefData.initPoint || prefData.init_point
         return
       }
 
-      // 3. TRANSFERENCIA
       if (paymentMethod === 'transfer') {
+        setIsLeavingCheckout(true)
         clearCart()
-
         router.push(`/checkout/transfer?orderId=${order.id}`)
         return
       }
 
-      // 4. WHATSAPP
       if (paymentMethod === 'whatsapp') {
         window.open(
           `https://wa.me/${siteConfig.whatsappNumber}?text=${buildWhatsAppOrderMessage(order.id)}`,
           '_blank'
         )
 
+        setIsLeavingCheckout(true)
         clearCart()
         router.push(`/checkout/pending?orderId=${order.id}`)
         return
@@ -171,7 +168,7 @@ export default function CheckoutPage() {
     }
   }
 
-  if (cart.length === 0) return null
+  if (cart.length === 0 && !isLeavingCheckout) return null
 
   const stepTitles = ['Datos', 'Envío', 'Pago']
 
@@ -205,15 +202,19 @@ export default function CheckoutPage() {
               <div
                 key={title}
                 className={`rounded-3xl border px-5 py-4 ${active
-                  ? 'border-[#143047] bg-white shadow-sm'
-                  : completed
-                    ? 'border-[#a7d9cb] bg-[#ecf8f4]'
-                    : 'border-[#d8cdb8] bg-[#f8f3ea]'
+                    ? 'border-[#143047] bg-white shadow-sm'
+                    : completed
+                      ? 'border-[#a7d9cb] bg-[#ecf8f4]'
+                      : 'border-[#d8cdb8] bg-[#f8f3ea]'
                   }`}
               >
                 <div className="flex items-center gap-3">
                   <span
-                    className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${active ? 'bg-[#143047] text-white' : completed ? 'bg-[#0f6d5f] text-white' : 'bg-white text-[#143047]'
+                    className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${active
+                        ? 'bg-[#143047] text-white'
+                        : completed
+                          ? 'bg-[#0f6d5f] text-white'
+                          : 'bg-white text-[#143047]'
                       }`}
                   >
                     {completed ? <CheckCircle2 className="h-5 w-5" /> : currentStep}
@@ -372,7 +373,9 @@ export default function CheckoutPage() {
                     return (
                       <label
                         key={method.value}
-                        className={`flex cursor-pointer gap-4 rounded-3xl border p-5 transition ${active ? 'border-[#143047] bg-[#eef4f8]' : 'border-[#d8cdb8] bg-[#f8f3ea] hover:bg-white'
+                        className={`flex cursor-pointer gap-4 rounded-3xl border p-5 transition ${active
+                            ? 'border-[#143047] bg-[#eef4f8]'
+                            : 'border-[#d8cdb8] bg-[#f8f3ea] hover:bg-white'
                           }`}
                       >
                         <input
@@ -397,6 +400,7 @@ export default function CheckoutPage() {
                     )
                   })}
                 </div>
+
                 {paymentMethod === 'transfer' && (
                   <div className="mt-5 rounded-3xl border border-[#d8cdb8] bg-[#f8f3ea] p-5">
                     <h3 className="text-base font-extrabold text-[#143047]">
@@ -429,7 +433,6 @@ export default function CheckoutPage() {
                     </div>
                   </div>
                 )}
-
 
                 {error && <p className="mt-4 rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b44a42]">{error}</p>}
 
