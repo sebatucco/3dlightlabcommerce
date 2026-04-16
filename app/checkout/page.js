@@ -141,20 +141,16 @@ export default function CheckoutPage() {
         window.location.href = prefData.initPoint || prefData.init_point
         return
       }
-
       if (paymentMethod === 'transfer') {
         setIsLeavingCheckout(true)
-        clearCart()
         router.push(`/checkout/transfer?orderId=${order.id}`)
         return
       }
-
       if (paymentMethod === 'whatsapp') {
         window.open(
           `https://wa.me/${siteConfig.whatsappNumber}?text=${buildWhatsAppOrderMessage(order.id)}`,
           '_blank'
         )
-
         setIsLeavingCheckout(true)
         clearCart()
         router.push(`/checkout/pending?orderId=${order.id}`)
@@ -202,19 +198,19 @@ export default function CheckoutPage() {
               <div
                 key={title}
                 className={`rounded-3xl border px-5 py-4 ${active
-                    ? 'border-[#143047] bg-white shadow-sm'
-                    : completed
-                      ? 'border-[#a7d9cb] bg-[#ecf8f4]'
-                      : 'border-[#d8cdb8] bg-[#f8f3ea]'
+                  ? 'border-[#143047] bg-white shadow-sm'
+                  : completed
+                    ? 'border-[#a7d9cb] bg-[#ecf8f4]'
+                    : 'border-[#d8cdb8] bg-[#f8f3ea]'
                   }`}
               >
                 <div className="flex items-center gap-3">
                   <span
                     className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${active
-                        ? 'bg-[#143047] text-white'
-                        : completed
-                          ? 'bg-[#0f6d5f] text-white'
-                          : 'bg-white text-[#143047]'
+                      ? 'bg-[#143047] text-white'
+                      : completed
+                        ? 'bg-[#0f6d5f] text-white'
+                        : 'bg-white text-[#143047]'
                       }`}
                   >
                     {completed ? <CheckCircle2 className="h-5 w-5" /> : currentStep}
@@ -374,8 +370,8 @@ export default function CheckoutPage() {
                       <label
                         key={method.value}
                         className={`flex cursor-pointer gap-4 rounded-3xl border p-5 transition ${active
-                            ? 'border-[#143047] bg-[#eef4f8]'
-                            : 'border-[#d8cdb8] bg-[#f8f3ea] hover:bg-white'
+                          ? 'border-[#143047] bg-[#eef4f8]'
+                          : 'border-[#d8cdb8] bg-[#f8f3ea] hover:bg-white'
                           }`}
                       >
                         <input

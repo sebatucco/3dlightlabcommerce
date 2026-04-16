@@ -3,23 +3,33 @@
 import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Building2, Copy, Check, Home, MessageCircle } from 'lucide-react'
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import Link from 'next/link'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 import WhatsAppButton from '@/components/WhatsAppButton'
 import CartDrawer from '@/components/CartDrawer'
 import { siteConfig } from '@/lib/site'
+import { useCart } from '@/lib/store'
 
 function TransferContent() {
   const searchParams = useSearchParams()
   const orderId = searchParams.get('orderId')
   const [copied, setCopied] = useState(null)
+  const { clearCart } = useCart()
 
-  const copyToClipboard = (text, field) => {
-    navigator.clipboard.writeText(text)
-    setCopied(field)
-    setTimeout(() => setCopied(null), 2000)
+  useEffect(() => {
+    clearCart()
+  }, [clearCart])
+
+  const copyToClipboard = async (text, field) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(field)
+      setTimeout(() => setCopied(null), 2000)
+    } catch (error) {
+      console.error('No se pudo copiar:', error)
+    }
   }
 
   const bankInfo = siteConfig.bankInfo
@@ -31,12 +41,18 @@ function TransferContent() {
       <WhatsAppButton />
 
       <div className="container mx-auto px-4 pb-16 pt-32">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-2xl">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto max-w-2xl"
+        >
           <div className="text-center">
             <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#eef4f8] text-[#143047]">
               <Building2 className="h-10 w-10" />
             </div>
-            <h1 className="mt-6 font-display text-6xl uppercase leading-none text-[#143047]">Transferencia</h1>
+            <h1 className="mt-6 font-display text-6xl uppercase leading-none text-[#143047]">
+              Transferencia
+            </h1>
             <p className="mt-4 text-base leading-7 text-[#4e6475]">
               Realizá la transferencia y luego enviá el comprobante por WhatsApp para confirmar el pedido.
             </p>
@@ -44,7 +60,9 @@ function TransferContent() {
 
           {orderId && (
             <div className="mt-6 rounded-3xl border border-[#d8cdb8] bg-white p-4 text-center shadow-sm">
-              <p className="text-sm uppercase tracking-[0.16em] text-[#5e89a6]">Número de pedido</p>
+              <p className="text-sm uppercase tracking-[0.16em] text-[#5e89a6]">
+                Número de pedido
+              </p>
               <p className="mt-2 text-lg font-extrabold text-[#143047]">{orderId}</p>
             </div>
           )}
@@ -59,13 +77,25 @@ function TransferContent() {
                 { label: 'Alias', value: bankInfo.alias },
                 { label: 'CUIT', value: bankInfo.cuit },
               ].map((item) => (
-                <div key={item.label} className="flex items-center justify-between gap-4 rounded-3xl bg-[#f8f3ea] p-4">
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between gap-4 rounded-3xl bg-[#f8f3ea] p-4"
+                >
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">{item.label}</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                      {item.label}
+                    </p>
                     <p className="mt-1 font-semibold text-[#143047]">{item.value}</p>
                   </div>
-                  <button onClick={() => copyToClipboard(item.value, item.label)} className="rounded-full border border-[#d8cdb8] p-3 text-[#143047] hover:bg-white">
-                    {copied === item.label ? <Check className="h-4 w-4 text-[#0f6d5f]" /> : <Copy className="h-4 w-4" />}
+                  <button
+                    onClick={() => copyToClipboard(item.value, item.label)}
+                    className="rounded-full border border-[#d8cdb8] p-3 text-[#143047] hover:bg-white"
+                  >
+                    {copied === item.label ? (
+                      <Check className="h-4 w-4 text-[#0f6d5f]" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
               ))}
@@ -84,7 +114,9 @@ function TransferContent() {
 
           <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-center">
             <a
-              href={`https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent(`Hola! Envío el comprobante de transferencia del pedido ${orderId || ''}`)}`}
+              href={`https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent(
+                `Hola! Envío el comprobante de transferencia del pedido ${orderId || ''}`
+              )}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 rounded-full bg-[#22c55e] px-6 py-4 text-sm font-bold uppercase tracking-[0.16em] text-white transition hover:bg-[#16a34a]"
@@ -92,7 +124,11 @@ function TransferContent() {
               <MessageCircle className="h-4 w-4" />
               Enviar comprobante
             </a>
-            <Link href="/" className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-6 py-4 text-sm font-bold uppercase tracking-[0.16em] text-[#143047] transition hover:bg-[#eef4f8]">
+
+            <Link
+              href="/"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-6 py-4 text-sm font-bold uppercase tracking-[0.16em] text-[#143047] transition hover:bg-[#eef4f8]"
+            >
               <Home className="h-4 w-4" />
               Volver al inicio
             </Link>
