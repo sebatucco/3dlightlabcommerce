@@ -124,7 +124,6 @@ function TransferContent() {
               <MessageCircle className="h-4 w-4" />
               Enviar comprobante
             </a>
-
             <Link
               href="/"
               className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-6 py-4 text-sm font-bold uppercase tracking-[0.16em] text-[#143047] transition hover:bg-[#eef4f8]"

@@ -1,35 +1,114 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/admin-auth'
 
-export const dynamic = 'force-dynamic'
-
-function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) return null
-  return createClient(url, key)
-}
-
-export async function PUT(request, { params }) {
+export async function GET(request, context) {
   const auth = await requireAdmin(request)
   if (!auth.authorized) return auth.response
 
-  const supabase = getAdminClient()
-  if (!supabase) return NextResponse.json({ error: 'Faltan credenciales de servidor' }, { status: 500 })
+  try {
+    const params = await context.params
+    const id = params?.id
 
-  const body = await request.json().catch(() => ({}))
-  const updates = {}
-  if (body.status) updates.status = body.status
-  if (body.paymentStatus) updates.payment_status = body.paymentStatus
+    if (!id) {
+      return NextResponse.json({ error: 'Falta id' }, { status: 400 })
+    }
 
-  const { data, error } = await supabase
-    .from('orders')
-    .update(updates)
-    .eq('id', params.id)
-    .select('*')
-    .single()
+    const supabase = createAdminClient()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        order_items (*)
+      `)
+      .eq('id', id)
+      .single()
+
+    if (error || !data) {
+      return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+    }
+
+    return NextResponse.json(data)
+  } catch (error) {
+    return NextResponse.json(
+      { error: error?.message || 'Error obteniendo orden' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PATCH(request, context) {
+  const auth = await requireAdmin(request)
+  if (!auth.authorized) return auth.response
+
+  try {
+    const params = await context.params
+    const id = params?.id
+
+    if (!id) {
+      return NextResponse.json({ error: 'Falta id' }, { status: 400 })
+    }
+
+    const body = await request.json()
+    const supabase = createAdminClient()
+
+    const allowedShippingStatuses = ['pending', 'preparing', 'shipped', 'delivered', 'cancelled']
+    const allowedOrderStatuses = ['pending', 'approved', 'cancelled', 'rejected']
+
+    const updates = {}
+
+    if (body.status && allowedOrderStatuses.includes(body.status)) {
+      updates.status = body.status
+    }
+
+    if (body.shipping_status && allowedShippingStatuses.includes(body.shipping_status)) {
+      updates.shipping_status = body.shipping_status
+    }
+
+    if (body.status === 'approved') {
+      updates.paid_at = new Date().toISOString()
+    }
+
+    if (body.status === 'cancelled') {
+      updates.cancelled_at = new Date().toISOString()
+    }
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+    }
+
+    const approvingTransfer =
+      order.payment_method === 'transferencia' &&
+      order.status !== 'approved' &&
+      body.status === 'approved'
+
+    if (approvingTransfer) {
+      updates.expires_at = null
+    }
+
+    const { data, error } = await supabase
+      .from('orders')
+      .update(updates)
+      .eq('id', id)
+      .select('*')
+      .single()
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ ok: true, order: data })
+  } catch (error) {
+    return NextResponse.json(
+      { error: error?.message || 'Error actualizando orden' },
+      { status: 500 }
+    )
+  }
 }

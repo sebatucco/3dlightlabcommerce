@@ -4,6 +4,9 @@ import { requireAdmin } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
 
+const FREE_SHIPPING_MIN_ITEMS = 3
+const DEFAULT_SHIPPING_COST = 0
+
 function normalizePaymentMethod(value) {
   if (value === 'transfer') return 'transferencia'
   if (value === 'mercadopago' || value === 'transferencia' || value === 'whatsapp') return value
@@ -20,7 +23,11 @@ export async function GET(request) {
 
   try {
     const supabase = createAdminClient()
-    const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false })
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false })
+
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data || [])
   } catch {
@@ -29,6 +36,8 @@ export async function GET(request) {
 }
 
 export async function POST(req) {
+  const supabase = createAdminClient()
+
   try {
     const body = await req.json()
 
@@ -37,6 +46,9 @@ export async function POST(req) {
     const customer_email = pickCustomerField(body, 'customer_email')
     const notes = body?.notes ?? body?.shipping?.notes ?? null
     const payment_method = normalizePaymentMethod(body?.payment_method ?? body?.paymentMethod)
+
+    const shipping = body?.shipping || {}
+
     const rawItems = Array.isArray(body?.items) ? body.items : []
     const items = rawItems.map((item) => ({
       id: item.id,
@@ -47,7 +59,6 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
     }
 
-    const supabase = createAdminClient()
     const productIds = items.map((item) => item.id)
 
     const { data: products, error: productsError } = await supabase
@@ -62,21 +73,30 @@ export async function POST(req) {
     const productMap = new Map((products || []).map((p) => [p.id, p]))
 
     let total = 0
+    let totalItems = 0
     const orderItems = []
+    const stockUpdates = []
 
     for (const item of items) {
       const product = productMap.get(item.id)
+
       if (!product || !product.active) {
         return NextResponse.json({ error: 'Producto no disponible' }, { status: 400 })
       }
 
-      if (typeof product.stock === 'number' && product.stock < item.quantity) {
-        return NextResponse.json({ error: `Sin stock suficiente para ${product.name}` }, { status: 400 })
+      const currentStock = Number(product.stock ?? 0)
+
+      if (currentStock < item.quantity) {
+        return NextResponse.json(
+          { error: `Sin stock suficiente para ${product.name}` },
+          { status: 400 }
+        )
       }
 
       const unitPrice = Number(product.price)
       const subtotal = unitPrice * item.quantity
       total += subtotal
+      totalItems += item.quantity
 
       orderItems.push({
         product_id: product.id,
@@ -85,9 +105,25 @@ export async function POST(req) {
         quantity: item.quantity,
         subtotal,
       })
+
+      if (payment_method === 'transferencia') {
+        stockUpdates.push({
+          product_id: product.id,
+          new_stock: currentStock - item.quantity,
+        })
+      }
     }
 
+    const shipping_free = totalItems >= FREE_SHIPPING_MIN_ITEMS
+    const shipping_cost = shipping_free ? 0 : DEFAULT_SHIPPING_COST
+    const shipping_method = shipping_free ? 'free_shipping' : 'standard'
+    const shipping_status = 'pending'
+
     const external_reference = `ORDER-${Date.now()}`
+    const expires_at =
+      payment_method === 'transferencia'
+        ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        : null
 
     const { data: order, error: orderError } = await supabase
       .from('orders')
@@ -96,10 +132,25 @@ export async function POST(req) {
         customer_phone,
         customer_email: customer_email || null,
         notes,
+
         payment_method,
         total,
         status: 'pending',
         external_reference,
+        expires_at,
+
+        shipping_cost,
+        shipping_free,
+        shipping_method,
+        shipping_status,
+
+        shipping_street: shipping.street || null,
+        shipping_number: shipping.number || null,
+        shipping_floor: shipping.floor || null,
+        shipping_apartment: shipping.apartment || null,
+        shipping_city: shipping.city || null,
+        shipping_province: shipping.province || null,
+        shipping_zip_code: shipping.zipCode || null,
       })
       .select('*')
       .single()
@@ -113,7 +164,28 @@ export async function POST(req) {
       .insert(orderItems.map((item) => ({ ...item, order_id: order.id })))
 
     if (itemsError) {
+      await supabase.from('orders').delete().eq('id', order.id)
       return NextResponse.json({ error: itemsError.message }, { status: 500 })
+    }
+
+    if (payment_method === 'transferencia') {
+      for (const update of stockUpdates) {
+        const { error: stockError } = await supabase
+          .from('products')
+          .update({ stock: update.new_stock })
+          .eq('id', update.product_id)
+
+        if (stockError) {
+          return NextResponse.json(
+            {
+              error: 'La orden fue creada, pero no se pudo reservar stock para un producto.',
+              details: stockError.message,
+              orderId: order.id,
+            },
+            { status: 500 }
+          )
+        }
+      }
     }
 
     return NextResponse.json({
@@ -121,9 +193,14 @@ export async function POST(req) {
       id: order.id,
       orderId: order.id,
       external_reference,
+      shipping_free,
+      shipping_cost,
       order,
     })
   } catch (error) {
-    return NextResponse.json({ error: error?.message || 'Error interno' }, { status: 500 })
+    return NextResponse.json(
+      { error: error?.message || 'Error interno' },
+      { status: 500 }
+    )
   }
 }
