@@ -228,9 +228,67 @@ export default function AdminPedidosPage() {
                     </div>
                 ) : null}
 
+                <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                            Pedidos pendientes
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-[#143047]">{metrics.pendingCount}</p>
+                    </div>
+
+                    <div className="rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                            Pedidos aprobados
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-[#143047]">{metrics.approvedCount}</p>
+                    </div>
+
+                    <div className="rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                            Transferencias vencidas
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-[#143047]">{metrics.expiredTransfers}</p>
+                    </div>
+
+                    <div className="rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                            Total vendido
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-[#143047]">
+                            {formatPrice(metrics.totalRevenue)}
+                        </p>
+                    </div>
+                </div>
+
                 <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
                     <section className="rounded-[34px] border border-[#d8cdb8] bg-white p-6 shadow-[0_18px_50px_rgba(20,48,71,0.08)]">
+
                         <h2 className="text-2xl font-extrabold">Listado</h2>
+
+                        <div className="mt-6 grid gap-3 md:grid-cols-2">
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="rounded-2xl border border-[#d8cdb8] bg-[#f8f3ea] px-4 py-3 text-sm text-[#143047] outline-none"
+                            >
+                                <option value="all">Todos los estados</option>
+                                <option value="pending">Pendientes</option>
+                                <option value="approved">Aprobados</option>
+                                <option value="cancelled">Cancelados</option>
+                                <option value="rejected">Rechazados</option>
+                            </select>
+
+                            <select
+                                value={paymentFilter}
+                                onChange={(e) => setPaymentFilter(e.target.value)}
+                                className="rounded-2xl border border-[#d8cdb8] bg-[#f8f3ea] px-4 py-3 text-sm text-[#143047] outline-none"
+                            >
+                                <option value="all">Todos los medios de pago</option>
+                                <option value="mercadopago">Mercado Pago</option>
+                                <option value="transferencia">Transferencia</option>
+                                <option value="whatsapp">WhatsApp</option>
+                            </select>
+                        </div>
 
                         {loading ? (
                             <div className="mt-6 text-sm text-[#4e6475]">Cargando pedidos...</div>
