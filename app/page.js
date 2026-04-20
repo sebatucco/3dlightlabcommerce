@@ -1,6 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 import {
   MessageCircle,
@@ -17,12 +19,43 @@ import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 import CartDrawer from '@/components/CartDrawer'
 import WhatsAppButton from '@/components/WhatsAppButton'
-import CatalogClient from '@/components/CatalogClient'
 import { siteConfig } from '@/lib/site'
-import ImageCarousel from '@/components/ImageCarousel'
-import HeroBag3D from '@/components/HeroBag3D'
-import ChatWidget from '@/components/ChatWidget'
 
+const CatalogClient = dynamic(() => import('@/components/CatalogClient'), {
+  loading: () => (
+    <div className="container mx-auto px-4">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-[360px] animate-pulse rounded-[28px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))]"
+          />
+        ))}
+      </div>
+    </div>
+  ),
+})
+
+const ImageCarousel = dynamic(() => import('@/components/ImageCarousel'), {
+  loading: () => (
+    <div className="container mx-auto px-4">
+      <div className="h-40 animate-pulse rounded-[28px] border border-[hsl(var(--border))] bg-white/60" />
+    </div>
+  ),
+})
+
+const HeroBag3D = dynamic(() => import('@/components/HeroBag3D'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[420px] w-full max-w-[520px] items-center justify-center rounded-[30px] border border-[hsl(var(--border))] bg-white/60">
+      <span className="text-sm text-muted-foreground">Cargando experiencia visual…</span>
+    </div>
+  ),
+})
+
+const ChatWidget = dynamic(() => import('@/components/ChatWidget'), {
+  ssr: false,
+})
 
 const features = [
   {
@@ -47,25 +80,41 @@ const features = [
   },
 ]
 
+const initialForm = { name: '', email: '', message: '' }
+
 export default function HomePage() {
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState({ name: '', email: '', message: '' })
+  const [storeError, setStoreError] = useState('')
+  const [form, setForm] = useState(initialForm)
+  const [formState, setFormState] = useState({
+    loading: false,
+    success: '',
+    error: '',
+  })
 
   useEffect(() => {
-    let mounted = true
+    const controller = new AbortController()
 
     async function loadStoreData() {
       try {
+        setLoading(true)
+        setStoreError('')
+
         const [productsResponse, categoriesResponse] = await Promise.all([
-          fetch('/api/products', { cache: 'no-store' }),
-          fetch('/api/categories', { cache: 'no-store' }),
+          fetch('/api/products', {
+            cache: 'no-store',
+            signal: controller.signal,
+          }),
+          fetch('/api/categories', {
+            cache: 'no-store',
+            signal: controller.signal,
+          }),
         ])
 
-        const productsData = await productsResponse.json()
-        const categoriesData = await categoriesResponse.json()
-        if (!mounted) return
+        const productsData = await productsResponse.json().catch(() => ({}))
+        const categoriesData = await categoriesResponse.json().catch(() => ({}))
 
         const items = Array.isArray(productsData?.products) ? productsData.products : []
         const categoryItems = Array.isArray(categoriesData)
@@ -76,34 +125,78 @@ export default function HomePage() {
 
         setProducts(items)
         setCategories(categoryItems)
+
+        if (!productsResponse.ok || !categoriesResponse.ok) {
+          setStoreError('No se pudieron cargar todos los datos del catálogo.')
+        }
       } catch (error) {
-        console.error('Error loading store data:', error)
+        if (error?.name === 'AbortError') return
+        setStoreError('No se pudo cargar el catálogo en este momento.')
       } finally {
-        if (mounted) setLoading(false)
+        setLoading(false)
       }
     }
 
     loadStoreData()
 
-    return () => {
-      mounted = false
-    }
+    return () => controller.abort()
   }, [])
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  async function handleSubmit(event) {
+    event.preventDefault()
+    if (formState.loading) return
+
+    setFormState({
+      loading: true,
+      success: '',
+      error: '',
+    })
+
     try {
-      await fetch('/api/contacts', {
+      const response = await fetch('/api/contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          name: form.name.trim(),
+          email: form.email.trim().toLowerCase(),
+          message: form.message.trim(),
+        }),
       })
-      setForm({ name: '', email: '', message: '' })
-      alert('¡Mensaje enviado! Te contactaremos pronto.')
+
+      const payload = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        setFormState({
+          loading: false,
+          success: '',
+          error: payload?.error || 'No se pudo enviar tu consulta.',
+        })
+        return
+      }
+
+      setForm(initialForm)
+      setFormState({
+        loading: false,
+        success: '¡Mensaje enviado! Te contactaremos pronto.',
+        error: '',
+      })
     } catch {
-      alert('No se pudo enviar el mensaje, pero podés escribirnos por WhatsApp.')
+      setFormState({
+        loading: false,
+        success: '',
+        error: 'No se pudo enviar el mensaje, pero podés escribirnos por WhatsApp.',
+      })
     }
   }
+
+  const contactItems = useMemo(
+    () => [
+      [MapPin, siteConfig.location],
+      [Phone, siteConfig.whatsappNumber],
+      [Mail, siteConfig.email],
+    ],
+    []
+  )
 
   return (
     <div className="min-h-screen bg-background">
@@ -129,9 +222,7 @@ export default function HomePage() {
 
             <h1 className="mt-4 text-5xl font-bold leading-tight text-foreground md:text-7xl">
               Luz cálida para{' '}
-              <span className="text-[hsl(var(--warm-gray-dark))]">
-                espacios con carácter
-              </span>
+              <span className="text-[hsl(var(--warm-gray-dark))]">espacios con carácter</span>
             </h1>
 
             <p className="mt-6 max-w-md text-lg leading-relaxed text-muted-foreground">
@@ -188,14 +279,15 @@ export default function HomePage() {
             <p className="mx-auto mt-4 max-w-md text-lg text-muted-foreground">
               Lámparas con materialidad cálida, presencia visual y detalles cuidados.
             </p>
+            {storeError ? (
+              <p className="mx-auto mt-4 max-w-xl rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b34f42]">
+                {storeError}
+              </p>
+            ) : null}
           </motion.div>
         </div>
 
-        <CatalogClient
-          products={products}
-          categories={categories}
-          loading={loading}
-        />
+        <CatalogClient products={products} categories={categories} loading={loading} />
       </section>
 
       <section id="nosotros" className="bg-[hsl(var(--bone))] py-24">
@@ -207,11 +299,16 @@ export default function HomePage() {
               viewport={{ once: true }}
               className="overflow-hidden rounded-[30px] border border-[hsl(var(--border))] bg-white p-3 warm-shadow"
             >
-              <img
-                src="/hero/lifestyle.jpg"
-                alt="Lámpara en ambiente cálido"
-                className="h-[400px] w-full rounded-[24px] object-cover lg:h-[500px]"
-              />
+              <div className="relative h-[400px] w-full overflow-hidden rounded-[24px] lg:h-[500px]">
+                <Image
+                  src="/hero/lifestyle.jpg"
+                  alt="Lámpara en ambiente cálido"
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover"
+                  priority={false}
+                />
+              </div>
             </motion.div>
 
             <motion.div
@@ -251,9 +348,7 @@ export default function HomePage() {
                       <h3 className="text-sm font-semibold text-foreground">
                         {feature.title}
                       </h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {feature.desc}
-                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">{feature.desc}</p>
                     </div>
                   </motion.div>
                 ))}
@@ -271,9 +366,7 @@ export default function HomePage() {
             viewport={{ once: true }}
             className="mb-16 text-center"
           >
-            <h2 className="text-4xl font-bold text-foreground md:text-5xl">
-              Contacto
-            </h2>
+            <h2 className="text-4xl font-bold text-foreground md:text-5xl">Contacto</h2>
             <p className="mt-4 text-lg text-muted-foreground">
               ¿Estás armando un espacio o querés asesoramiento? Escribinos.
             </p>
@@ -288,9 +381,7 @@ export default function HomePage() {
               className="space-y-5 rounded-[30px] border border-[hsl(var(--border))] bg-white p-8 warm-shadow"
             >
               <div>
-                <label className="mb-1.5 block text-sm text-muted-foreground">
-                  Nombre
-                </label>
+                <label className="mb-1.5 block text-sm text-muted-foreground">Nombre</label>
                 <input
                   type="text"
                   required
@@ -302,9 +393,7 @@ export default function HomePage() {
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm text-muted-foreground">
-                  Email
-                </label>
+                <label className="mb-1.5 block text-sm text-muted-foreground">Email</label>
                 <input
                   type="email"
                   required
@@ -316,9 +405,7 @@ export default function HomePage() {
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm text-muted-foreground">
-                  Mensaje
-                </label>
+                <label className="mb-1.5 block text-sm text-muted-foreground">Mensaje</label>
                 <textarea
                   required
                   rows={4}
@@ -329,12 +416,25 @@ export default function HomePage() {
                 />
               </div>
 
+              {formState.success ? (
+                <p className="rounded-2xl bg-[#ecf8f4] px-4 py-3 text-sm text-[#0f6d5f]">
+                  {formState.success}
+                </p>
+              ) : null}
+
+              {formState.error ? (
+                <p className="rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b34f42]">
+                  {formState.error}
+                </p>
+              ) : null}
+
               <button
                 type="submit"
-                className="inline-flex items-center gap-2 rounded-full bg-[hsl(var(--primary))] px-8 py-3 text-sm font-medium tracking-wide text-[hsl(var(--primary-foreground))] transition-opacity hover:opacity-90"
+                disabled={formState.loading}
+                className="inline-flex items-center gap-2 rounded-full bg-[hsl(var(--primary))] px-8 py-3 text-sm font-medium tracking-wide text-[hsl(var(--primary-foreground))] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Send size={14} />
-                Enviar consulta
+                {formState.loading ? 'Enviando...' : 'Enviar consulta'}
               </button>
             </motion.form>
 
@@ -344,9 +444,7 @@ export default function HomePage() {
               viewport={{ once: true }}
               className="rounded-[30px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-8"
             >
-              <h3 className="text-2xl font-bold text-foreground">
-                Hablemos de tu proyecto
-              </h3>
+              <h3 className="text-2xl font-bold text-foreground">Hablemos de tu proyecto</h3>
 
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 Podemos ayudarte a elegir la pieza adecuada para un ambiente puntual,
@@ -354,11 +452,7 @@ export default function HomePage() {
               </p>
 
               <div className="mt-8 space-y-5">
-                {[
-                  [MapPin, siteConfig.location],
-                  [Phone, siteConfig.whatsappNumber],
-                  [Mail, siteConfig.email],
-                ].map(([Icon, value]) => (
+                {contactItems.map(([Icon, value]) => (
                   <div key={value} className="flex items-start gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white">
                       <Icon className="h-4 w-4 text-[hsl(var(--foreground))]" />
@@ -369,16 +463,21 @@ export default function HomePage() {
               </div>
 
               <div className="mt-10 overflow-hidden rounded-[24px] border border-[hsl(var(--border))]">
-                <img
-                  src="/gallery/gallery-2.jpg"
-                  alt="Detalle de lámpara"
-                  className="h-56 w-full object-cover"
-                />
+                <div className="relative h-56 w-full">
+                  <Image
+                    src="/gallery/gallery-2.jpg"
+                    alt="Detalle de lámpara"
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 50vw"
+                    className="object-cover"
+                  />
+                </div>
               </div>
             </motion.div>
           </div>
         </div>
       </section>
+
       <ChatWidget />
       <Footer />
     </div>

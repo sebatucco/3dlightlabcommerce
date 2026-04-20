@@ -1,205 +1,318 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { requireAdmin } from '@/lib/admin-auth'
 
-export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
-const FREE_SHIPPING_MIN_ITEMS = 3
-const DEFAULT_SHIPPING_COST = 0
+const ALLOWED_PAYMENT_METHODS = ['mercadopago', 'transferencia']
+const ALLOWED_SHIPPING_METHODS = ['envio', 'retiro']
+const MAX_ITEMS_PER_ORDER = 50
 
-function normalizePaymentMethod(value) {
-  if (value === 'transfer') return 'transferencia'
-  if (value === 'mercadopago' || value === 'transferencia' || value === 'whatsapp') return value
-  return 'mercadopago'
+function normalizeString(value) {
+  return String(value || '').trim()
 }
 
-function pickCustomerField(body, key) {
-  return body?.[key] ?? body?.customer?.[key.replace('customer_', '')] ?? body?.customer?.[key] ?? ''
+function normalizeEmail(value) {
+  return normalizeString(value).toLowerCase()
 }
 
-export async function GET(request) {
-  const auth = await requireAdmin(request)
-  if (!auth.authorized) return auth.response
+function normalizePhone(value) {
+  return normalizeString(value)
+}
 
-  try {
-    const supabase = createAdminClient()
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .order('created_at', { ascending: false })
+function toPositiveInteger(value) {
+  const num = Number(value)
+  if (!Number.isInteger(num) || num <= 0) return null
+  return num
+}
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data || [])
-  } catch {
-    return NextResponse.json([], { status: 200 })
+function toSafeNumber(value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
+}
+
+function pickPaymentMethod(value) {
+  const method = normalizeString(value).toLowerCase()
+  return ALLOWED_PAYMENT_METHODS.includes(method) ? method : null
+}
+
+function pickShippingMethod(value) {
+  const method = normalizeString(value).toLowerCase()
+  return ALLOWED_SHIPPING_METHODS.includes(method) ? method : null
+}
+
+function validateCustomerPayload(payload) {
+  const customer_name = normalizeString(payload.customer_name)
+  const customer_phone = normalizePhone(payload.customer_phone)
+  const customer_email = normalizeEmail(payload.customer_email)
+  const shipping_method = pickShippingMethod(payload.shipping_method)
+  const payment_method = pickPaymentMethod(payload.payment_method)
+  const address = normalizeString(payload.address)
+  const notes = normalizeString(payload.notes)
+
+  if (!customer_name) return { error: 'Falta el nombre del cliente' }
+  if (!customer_phone) return { error: 'Falta el teléfono del cliente' }
+  if (!shipping_method) return { error: 'Método de envío inválido' }
+  if (!payment_method) return { error: 'Método de pago inválido' }
+  if (shipping_method === 'envio' && !address) return { error: 'Falta la dirección de envío' }
+
+  return {
+    value: {
+      customer_name,
+      customer_phone,
+      customer_email: customer_email || null,
+      shipping_method,
+      payment_method,
+      address: address || null,
+      notes: notes || null,
+    },
   }
 }
 
-export async function POST(req) {
-  const supabase = createAdminClient()
+function validateRawItems(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { error: 'Debés enviar al menos un producto' }
+  }
 
+  if (items.length > MAX_ITEMS_PER_ORDER) {
+    return { error: `No podés enviar más de ${MAX_ITEMS_PER_ORDER} items por pedido` }
+  }
+
+  const normalized = []
+
+  for (const item of items) {
+    const product_id = normalizeString(item?.product_id || item?.id)
+    const quantity = toPositiveInteger(item?.quantity)
+
+    if (!product_id) {
+      return { error: 'Hay un item sin product_id' }
+    }
+
+    if (!quantity) {
+      return { error: `Cantidad inválida para el producto ${product_id}` }
+    }
+
+    normalized.push({ product_id, quantity })
+  }
+
+  return { value: normalized }
+}
+
+function buildOrderExpiration(paymentMethod) {
+  if (paymentMethod !== 'transferencia') return null
+  return new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString()
+}
+
+async function fetchProductsForOrder(supabase, productIds) {
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, name, slug, price, compare_at_price, stock, active')
+    .in('id', productIds)
+
+  if (error) {
+    return { error: error.message || 'No se pudieron obtener los productos' }
+  }
+
+  return { value: Array.isArray(data) ? data : [] }
+}
+
+function buildValidatedItems(requestItems, dbProducts) {
+  const dbMap = new Map(dbProducts.map((product) => [String(product.id), product]))
+  const orderItems = []
+  let total = 0
+
+  for (const item of requestItems) {
+    const product = dbMap.get(String(item.product_id))
+
+    if (!product || product.active === false) {
+      return { error: `El producto ${item.product_id} no está disponible` }
+    }
+
+    const quantity = Number(item.quantity)
+    const stock = Number(product.stock ?? 0)
+    const unitPrice = toSafeNumber(product.price)
+
+    if (quantity <= 0) {
+      return { error: `Cantidad inválida para ${product.name}` }
+    }
+
+    if (stock < quantity) {
+      return { error: `No hay stock suficiente para ${product.name}` }
+    }
+
+    const subtotal = unitPrice * quantity
+    total += subtotal
+
+    orderItems.push({
+      product_id: product.id,
+      quantity,
+      price: unitPrice,
+      product_name: product.name,
+      product_slug: product.slug || String(product.id),
+    })
+  }
+
+  return {
+    value: {
+      orderItems,
+      total,
+    },
+  }
+}
+
+async function insertOrder(supabase, payload) {
+  const { data, error } = await supabase
+    .from('orders')
+    .insert(payload)
+    .select('*')
+    .single()
+
+  if (error || !data) {
+    return { error: error?.message || 'No se pudo crear la orden' }
+  }
+
+  return { value: data }
+}
+
+async function insertOrderItems(supabase, items) {
+  const { error } = await supabase.from('order_items').insert(items)
+  if (error) {
+    return { error: error.message || 'No se pudieron guardar los items de la orden' }
+  }
+
+  return { value: true }
+}
+
+async function decrementStock(supabase, orderItems, dbProducts) {
+  const dbMap = new Map(dbProducts.map((product) => [String(product.id), product]))
+
+  for (const item of orderItems) {
+    const product = dbMap.get(String(item.product_id))
+    if (!product) {
+      return { error: `No se encontró el producto ${item.product_id} al actualizar stock` }
+    }
+
+    const currentStock = Number(product.stock ?? 0)
+    const nextStock = currentStock - Number(item.quantity)
+
+    if (nextStock < 0) {
+      return { error: `Stock inválido al actualizar ${product.name}` }
+    }
+
+    const { error } = await supabase
+      .from('products')
+      .update({ stock: nextStock })
+      .eq('id', product.id)
+
+    if (error) {
+      return { error: error.message || `No se pudo actualizar stock de ${product.name}` }
+    }
+  }
+
+  return { value: true }
+}
+
+export async function POST(request) {
   try {
-    const body = await req.json()
+    const body = await request.json().catch(() => null)
 
-    const customer_name = pickCustomerField(body, 'customer_name')
-    const customer_phone = pickCustomerField(body, 'customer_phone')
-    const customer_email = pickCustomerField(body, 'customer_email')
-    const notes = body?.notes ?? body?.shipping?.notes ?? null
-    const payment_method = normalizePaymentMethod(body?.payment_method ?? body?.paymentMethod)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
+    }
 
-    const shipping = body?.shipping || {}
+    const customerValidation = validateCustomerPayload(body)
+    if (customerValidation.error) {
+      return NextResponse.json({ error: customerValidation.error }, { status: 400 })
+    }
 
-    const rawItems = Array.isArray(body?.items) ? body.items : []
-    const items = rawItems.map((item) => ({
-      id: item.id,
-      quantity: Number(item.quantity || 1),
+    const itemsValidation = validateRawItems(body.items)
+    if (itemsValidation.error) {
+      return NextResponse.json({ error: itemsValidation.error }, { status: 400 })
+    }
+
+    const customer = customerValidation.value
+    const requestItems = itemsValidation.value
+    const supabase = createAdminClient()
+
+    const productIds = [...new Set(requestItems.map((item) => item.product_id))]
+    const productsResult = await fetchProductsForOrder(supabase, productIds)
+
+    if (productsResult.error) {
+      return NextResponse.json({ error: productsResult.error }, { status: 500 })
+    }
+
+    const dbProducts = productsResult.value
+
+    if (dbProducts.length !== productIds.length) {
+      return NextResponse.json(
+        { error: 'Uno o más productos no existen o no están disponibles' },
+        { status: 400 }
+      )
+    }
+
+    const validatedItemsResult = buildValidatedItems(requestItems, dbProducts)
+
+    if (validatedItemsResult.error) {
+      return NextResponse.json({ error: validatedItemsResult.error }, { status: 400 })
+    }
+
+    const { orderItems, total } = validatedItemsResult.value
+
+    const orderPayload = {
+      customer_name: customer.customer_name,
+      customer_phone: customer.customer_phone,
+      customer_email: customer.customer_email,
+      shipping_method: customer.shipping_method,
+      payment_method: customer.payment_method,
+      address: customer.address,
+      notes: customer.notes,
+      total,
+      status: 'pending',
+      shipping_status: 'pending',
+      expires_at: buildOrderExpiration(customer.payment_method),
+    }
+
+    const insertedOrder = await insertOrder(supabase, orderPayload)
+
+    if (insertedOrder.error) {
+      return NextResponse.json({ error: insertedOrder.error }, { status: 500 })
+    }
+
+    const order = insertedOrder.value
+
+    const itemsPayload = orderItems.map((item) => ({
+      order_id: order.id,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      price: item.price,
+      product_name: item.product_name,
+      product_slug: item.product_slug,
     }))
 
-    if (!customer_name || !customer_phone || !items.length) {
-      return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
+    const insertItemsResult = await insertOrderItems(supabase, itemsPayload)
+
+    if (insertItemsResult.error) {
+      return NextResponse.json({ error: insertItemsResult.error }, { status: 500 })
     }
 
-    const productIds = items.map((item) => item.id)
+    const decrementStockResult = await decrementStock(supabase, orderItems, dbProducts)
 
-    const { data: products, error: productsError } = await supabase
-      .from('products')
-      .select('id,name,price,stock,active')
-      .in('id', productIds)
-
-    if (productsError) {
-      return NextResponse.json({ error: productsError.message }, { status: 500 })
+    if (decrementStockResult.error) {
+      return NextResponse.json({ error: decrementStockResult.error }, { status: 500 })
     }
 
-    const productMap = new Map((products || []).map((p) => [p.id, p]))
-
-    let total = 0
-    let totalItems = 0
-    const orderItems = []
-    const stockUpdates = []
-
-    for (const item of items) {
-      const product = productMap.get(item.id)
-
-      if (!product || !product.active) {
-        return NextResponse.json({ error: 'Producto no disponible' }, { status: 400 })
-      }
-
-      const currentStock = Number(product.stock ?? 0)
-
-      if (currentStock < item.quantity) {
-        return NextResponse.json(
-          { error: `Sin stock suficiente para ${product.name}` },
-          { status: 400 }
-        )
-      }
-
-      const unitPrice = Number(product.price)
-      const subtotal = unitPrice * item.quantity
-      total += subtotal
-      totalItems += item.quantity
-
-      orderItems.push({
-        product_id: product.id,
-        product_name: product.name,
-        unit_price: unitPrice,
-        quantity: item.quantity,
-        subtotal,
-      })
-
-      if (payment_method === 'transferencia') {
-        stockUpdates.push({
-          product_id: product.id,
-          new_stock: currentStock - item.quantity,
-        })
-      }
-    }
-
-    const shipping_free = totalItems >= FREE_SHIPPING_MIN_ITEMS
-    const shipping_cost = shipping_free ? 0 : DEFAULT_SHIPPING_COST
-    const shipping_method = shipping_free ? 'free_shipping' : 'standard'
-    const shipping_status = 'pending'
-
-    const external_reference = `ORDER-${Date.now()}`
-    const expires_at =
-      payment_method === 'transferencia'
-        ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-        : null
-
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        customer_name,
-        customer_phone,
-        customer_email: customer_email || null,
-        notes,
-
-        payment_method,
-        total,
-        status: 'pending',
-        external_reference,
-        expires_at,
-
-        shipping_cost,
-        shipping_free,
-        shipping_method,
-        shipping_status,
-
-        shipping_street: shipping.street || null,
-        shipping_number: shipping.number || null,
-        shipping_floor: shipping.floor || null,
-        shipping_apartment: shipping.apartment || null,
-        shipping_city: shipping.city || null,
-        shipping_province: shipping.province || null,
-        shipping_zip_code: shipping.zipCode || null,
-      })
-      .select('*')
-      .single()
-
-    if (orderError) {
-      return NextResponse.json({ error: orderError.message }, { status: 500 })
-    }
-
-    const { error: itemsError } = await supabase
-      .from('order_items')
-      .insert(orderItems.map((item) => ({ ...item, order_id: order.id })))
-
-    if (itemsError) {
-      await supabase.from('orders').delete().eq('id', order.id)
-      return NextResponse.json({ error: itemsError.message }, { status: 500 })
-    }
-
-    if (payment_method === 'transferencia') {
-      for (const update of stockUpdates) {
-        const { error: stockError } = await supabase
-          .from('products')
-          .update({ stock: update.new_stock })
-          .eq('id', update.product_id)
-
-        if (stockError) {
-          return NextResponse.json(
-            {
-              error: 'La orden fue creada, pero no se pudo reservar stock para un producto.',
-              details: stockError.message,
-              orderId: order.id,
-            },
-            { status: 500 }
-          )
-        }
-      }
-    }
-
-    return NextResponse.json({
-      ok: true,
-      id: order.id,
-      orderId: order.id,
-      external_reference,
-      shipping_free,
-      shipping_cost,
-      order,
-    })
+    return NextResponse.json(
+      {
+        ok: true,
+        order: {
+          ...order,
+          items: itemsPayload,
+        },
+      },
+      { status: 201 }
+    )
   } catch (error) {
     return NextResponse.json(
-      { error: error?.message || 'Error interno' },
+      { error: error?.message || 'No se pudo crear la orden' },
       { status: 500 }
     )
   }
