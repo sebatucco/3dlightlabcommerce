@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ArrowLeft, MessageCircle, Minus, Plus, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useCart } from '@/lib/store'
 import { formatPrice } from '@/lib/mercadopago'
 import Header from '@/components/Header'
@@ -14,59 +15,133 @@ import WhatsAppButton from '@/components/WhatsAppButton'
 import ProductCard from '@/components/ProductCard'
 import { siteConfig } from '@/lib/site'
 
+function normalizeQuantity(value, stock) {
+  const safeStock = Number.isFinite(Number(stock)) ? Math.max(0, Number(stock)) : 0
+  const safeValue = Number.isFinite(Number(value)) ? Number(value) : 1
+
+  if (safeStock === 0) return 1
+  return Math.max(1, Math.min(safeValue, safeStock))
+}
+
 export default function ProductPage() {
   const params = useParams()
+  const productId = Array.isArray(params?.id) ? params.id[0] : params?.id
   const { addToCart, setIsOpen } = useCart()
 
   const [product, setProduct] = useState(null)
   const [relatedProducts, setRelatedProducts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [pageError, setPageError] = useState('')
   const [selectedVariant, setSelectedVariant] = useState(null)
   const [quantity, setQuantity] = useState(1)
   const [currentImage, setCurrentImage] = useState(0)
   const [viewMode, setViewMode] = useState('image')
+  const [modelViewerReady, setModelViewerReady] = useState(false)
+  const [addingToCart, setAddingToCart] = useState(false)
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && !customElements.get('model-viewer')) {
-      import('@google/model-viewer')
+    if (viewMode !== '3d') return
+    if (typeof window === 'undefined') return
+    if (customElements.get('model-viewer')) {
+      setModelViewerReady(true)
+      return
     }
-  }, [])
+
+    let active = true
+
+    import('@google/model-viewer')
+      .then(() => {
+        if (active) setModelViewerReady(true)
+      })
+      .catch(() => {
+        if (active) setModelViewerReady(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [viewMode])
 
   useEffect(() => {
+    if (!productId) return
+
+    const controller = new AbortController()
+
     async function fetchProduct() {
       try {
-        const response = await fetch(`/api/products/${params.id}`)
-        if (response.ok) {
-          const data = await response.json()
-          setProduct(data)
+        setLoading(true)
+        setPageError('')
+        setProduct(null)
+        setRelatedProducts([])
 
-          if (data.variants?.length) setSelectedVariant(data.variants[0])
+        const response = await fetch(`/api/products/${productId}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
 
-          const relatedResponse = await fetch(`/api/products?category=${data.category}`)
-          if (relatedResponse.ok) {
-            const relatedData = await relatedResponse.json()
-            setRelatedProducts(
-              (relatedData.products || [])
-                .filter((item) => item.id !== data.id)
-                .slice(0, 3)
-            )
-          }
+        if (!response.ok) {
+          setProduct(null)
+          setRelatedProducts([])
+          setPageError('No pudimos cargar este producto.')
           return
         }
-      } catch (error) {
-        console.error('Error fetching product:', error)
-      }
 
-      setProduct(null)
-      setRelatedProducts([])
-      setLoading(false)
+        const data = await response.json().catch(() => null)
+
+        if (!data) {
+          setProduct(null)
+          setRelatedProducts([])
+          setPageError('No pudimos cargar este producto.')
+          return
+        }
+
+        setProduct(data)
+
+        if (Array.isArray(data.variants) && data.variants.length > 0) {
+          setSelectedVariant(data.variants[0])
+        } else {
+          setSelectedVariant(null)
+        }
+
+        const relatedCategory = data.category_slug || data.category || ''
+        if (!relatedCategory) return
+
+        const relatedResponse = await fetch(
+          `/api/products?category=${encodeURIComponent(relatedCategory)}`,
+          {
+            cache: 'no-store',
+            signal: controller.signal,
+          }
+        )
+
+        if (!relatedResponse.ok) {
+          setRelatedProducts([])
+          return
+        }
+
+        const relatedData = await relatedResponse.json().catch(() => ({}))
+        const relatedItems = Array.isArray(relatedData?.products) ? relatedData.products : []
+
+        setRelatedProducts(
+          relatedItems.filter((item) => item.id !== data.id).slice(0, 3)
+        )
+      } catch (error) {
+        if (error?.name === 'AbortError') return
+        setProduct(null)
+        setRelatedProducts([])
+        setPageError('No pudimos cargar este producto.')
+      } finally {
+        setLoading(false)
+      }
     }
 
-    fetchProduct().finally(() => setLoading(false))
-  }, [params.id])
+    fetchProduct()
+
+    return () => controller.abort()
+  }, [productId])
 
   const media = useMemo(() => {
-    if (!product?.product_images || !Array.isArray(product.product_images)) return []
+    if (!Array.isArray(product?.product_images)) return []
 
     return [...product.product_images].sort(
       (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
@@ -78,62 +153,86 @@ export default function ProductPage() {
       (item) => item?.media_type === 'image' && item?.use_case === 'detail'
     )
 
-    if (detail.length > 0) {
-      return detail
-    }
+    if (detail.length > 0) return detail
 
     const catalog = media.filter(
       (item) => item?.media_type === 'image' && item?.use_case === 'catalog'
     )
 
-    if (catalog.length > 0) {
-      return catalog
-    }
+    if (catalog.length > 0) return catalog
 
     const primary = media.filter(
       (item) => item?.media_type === 'image' && item?.is_primary === true
     )
 
-    if (primary.length > 0) {
-      return primary
-    }
+    if (primary.length > 0) return primary
 
     return media.filter((item) => item?.media_type === 'image')
   }, [media])
 
   const model3D = useMemo(() => {
     return (
-      media.find(
-        (item) => item?.media_type === 'model' && item?.use_case === 'detail'
-      ) ||
+      media.find((item) => item?.media_type === 'model' && item?.use_case === 'detail') ||
       media.find((item) => item?.media_type === 'model') ||
       null
     )
   }, [media])
 
-  const fallbackImages = product?.images?.length
-    ? product.images.map((image) => ({ image_url: image, alt_text: product.name }))
-    : product?.image || product?.image_url
-      ? [{ image_url: product.image || product.image_url, alt_text: product.name }]
-      : []
+  const fallbackImages = useMemo(() => {
+    if (Array.isArray(product?.images) && product.images.length > 0) {
+      return product.images.map((image, index) => ({
+        id: `fallback-${index}`,
+        image_url: image,
+        alt_text: product?.name || 'Producto',
+      }))
+    }
+
+    if (product?.image || product?.image_url) {
+      return [
+        {
+          id: 'fallback-main',
+          image_url: product.image || product.image_url,
+          alt_text: product?.name || 'Producto',
+        },
+      ]
+    }
+
+    return []
+  }, [product])
 
   const imagesToShow = detailImages.length > 0 ? detailImages : fallbackImages
   const selectedImage = imagesToShow[currentImage]?.image_url || '/placeholder.jpg'
+  const stock = Number(product?.stock ?? 0)
+  const outOfStock = stock <= 0
 
   useEffect(() => {
     setCurrentImage(0)
     setViewMode('image')
+    setModelViewerReady(false)
   }, [product?.id])
 
-  const handleAddToCart = () => {
-    if (!product) return
-    addToCart(product, selectedVariant, quantity)
-    setIsOpen(true)
+  useEffect(() => {
+    setQuantity((prev) => normalizeQuantity(prev, stock))
+  }, [stock])
+
+  const handleAddToCart = async () => {
+    if (!product || outOfStock) return
+
+    setAddingToCart(true)
+    try {
+      addToCart(product, selectedVariant, normalizeQuantity(quantity, stock))
+      setIsOpen(true)
+    } finally {
+      setAddingToCart(false)
+    }
   }
 
   const handleWhatsApp = () => {
     if (!product) return
-    const message = `Hola! Me interesa ${product.name}${selectedVariant ? ` (${selectedVariant})` : ''} - ${formatPrice(product.price)}`
+
+    const safeQuantity = normalizeQuantity(quantity, stock)
+    const message = `Hola! Me interesa ${product.name}${selectedVariant ? ` (${selectedVariant})` : ''} - ${formatPrice(product.price)}. Cantidad: ${safeQuantity}`
+
     window.open(
       `https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent(message)}`,
       '_blank'
@@ -167,6 +266,9 @@ export default function ProductPage() {
         <Header />
         <div className="container mx-auto px-4 pb-16 pt-32 text-center">
           <h1 className="text-2xl font-medium text-foreground">Producto no encontrado</h1>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {pageError || 'No encontramos el producto que buscás.'}
+          </p>
           <Link href="/" className="mt-4 inline-block text-muted-foreground hover:text-foreground">
             Volver al inicio
           </Link>
@@ -182,7 +284,10 @@ export default function ProductPage() {
       <WhatsAppButton />
 
       <div className="container mx-auto px-4 pb-16 pt-32">
-        <Link href="/#catalogo" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+        <Link
+          href="/#catalogo"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+        >
           <ArrowLeft className="h-4 w-4" />
           Volver al catálogo
         </Link>
@@ -194,31 +299,42 @@ export default function ProductPage() {
             className="space-y-4"
           >
             <div className="overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm">
-              <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-[hsl(var(--bone))]">
+              <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-[hsl(var(--bone))]">
                 {viewMode === '3d' && model3D ? (
-                  <model-viewer
-                    src={model3D.image_url}
-                    alt={model3D.alt_text || product.name}
-                    auto-rotate
-                    camera-controls
-                    disable-zoom
-                    interaction-prompt="none"
-                    shadow-intensity="0"
-                    exposure="1"
-                    environment-image="neutral"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      backgroundColor: 'transparent',
-                      '--poster-color': 'transparent',
-                    }}
-                  />
+                  modelViewerReady ? (
+                    <model-viewer
+                      src={model3D.image_url}
+                      alt={model3D.alt_text || product.name}
+                      auto-rotate
+                      camera-controls
+                      disable-zoom
+                      interaction-prompt="none"
+                      shadow-intensity="0"
+                      exposure="1"
+                      environment-image="neutral"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        backgroundColor: 'transparent',
+                        '--poster-color': 'transparent',
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+                      Cargando visor 3D…
+                    </div>
+                  )
                 ) : (
-                  <img
-                    src={selectedImage}
-                    alt={imagesToShow[currentImage]?.alt_text || product.name}
-                    className="h-4/5 w-4/5 object-contain"
-                  />
+                  <div className="relative h-4/5 w-4/5">
+                    <Image
+                      src={selectedImage}
+                      alt={imagesToShow[currentImage]?.alt_text || product.name}
+                      fill
+                      sizes="(max-width: 1024px) 100vw, 50vw"
+                      className="object-contain"
+                      priority
+                    />
+                  </div>
                 )}
               </div>
             </div>
@@ -232,17 +348,21 @@ export default function ProductPage() {
                       setCurrentImage(index)
                       setViewMode('image')
                     }}
-                    className={`flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border ${viewMode === 'image' && currentImage === index
-                      ? 'border-foreground bg-background'
-                      : 'border-border bg-card'
+                    className={`relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border ${viewMode === 'image' && currentImage === index
+                        ? 'border-foreground bg-background'
+                        : 'border-border bg-card'
                       }`}
                     type="button"
                   >
-                    <img
-                      src={image.image_url}
-                      alt={image.alt_text || 'Miniatura'}
-                      className="h-4/5 w-4/5 object-contain"
-                    />
+                    <div className="relative h-4/5 w-4/5">
+                      <Image
+                        src={image.image_url}
+                        alt={image.alt_text || 'Miniatura'}
+                        fill
+                        sizes="80px"
+                        className="object-contain"
+                      />
+                    </div>
                   </button>
                 ))}
 
@@ -251,8 +371,8 @@ export default function ProductPage() {
                     type="button"
                     onClick={() => setViewMode('3d')}
                     className={`flex h-20 w-20 items-center justify-center rounded-xl border px-2 text-center text-xs font-medium ${viewMode === '3d'
-                      ? 'border-foreground bg-background text-foreground'
-                      : 'border-border bg-card text-muted-foreground'
+                        ? 'border-foreground bg-background text-foreground'
+                        : 'border-border bg-card text-muted-foreground'
                       }`}
                   >
                     Ver 3D
@@ -292,7 +412,7 @@ export default function ProductPage() {
               {product.description}
             </p>
 
-            {product.variants?.length > 0 && (
+            {Array.isArray(product.variants) && product.variants.length > 0 && (
               <div className="mt-8">
                 <p className="text-sm font-semibold text-foreground">Variante</p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -301,8 +421,8 @@ export default function ProductPage() {
                       key={variant}
                       onClick={() => setSelectedVariant(variant)}
                       className={`rounded-full px-4 py-2 text-sm ${selectedVariant === variant
-                        ? 'bg-foreground text-primary-foreground'
-                        : 'border border-border bg-secondary/40 text-foreground'
+                          ? 'bg-foreground text-primary-foreground'
+                          : 'border border-border bg-secondary/40 text-foreground'
                         }`}
                       type="button"
                     >
@@ -315,9 +435,10 @@ export default function ProductPage() {
 
             <div className="mt-8 flex items-center gap-2">
               <button
-                onClick={() => setQuantity((value) => Math.max(1, value - 1))}
+                onClick={() => setQuantity((value) => normalizeQuantity(value - 1, stock))}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-accent"
                 type="button"
+                disabled={outOfStock}
               >
                 <Minus className="h-4 w-4" />
               </button>
@@ -325,27 +446,34 @@ export default function ProductPage() {
               <span className="w-8 text-center text-lg font-medium">{quantity}</span>
 
               <button
-                onClick={() => setQuantity((value) => value + 1)}
+                onClick={() => setQuantity((value) => normalizeQuantity(value + 1, stock))}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-accent"
                 type="button"
+                disabled={outOfStock}
               >
                 <Plus className="h-4 w-4" />
               </button>
 
               <span className="ml-3 rounded-full bg-[hsl(var(--bone))] px-4 py-2 text-sm font-medium text-foreground">
-                Stock: {product.stock ?? 0}
+                Stock: {stock}
               </span>
             </div>
+
+            {outOfStock ? (
+              <p className="mt-4 rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b34f42]">
+                Este producto está sin stock por el momento.
+              </p>
+            ) : null}
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={handleAddToCart}
-                disabled={product.stock === 0}
+                disabled={outOfStock || addingToCart}
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-foreground px-6 py-4 text-sm font-medium tracking-wide text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
               >
                 <ShoppingCart className="h-4 w-4" />
-                Agregar al carrito
+                {addingToCart ? 'Agregando...' : 'Agregar al carrito'}
               </button>
 
               <button
