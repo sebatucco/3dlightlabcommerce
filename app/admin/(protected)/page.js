@@ -37,6 +37,7 @@ function SectionCard({ title, subtitle, children, action }) {
 
 export default function AdminPage() {
   const router = useRouter()
+
   const [activeTab, setActiveTab] = useState('dashboard')
   const [session, setSession] = useState(null)
   const [stats, setStats] = useState(null)
@@ -61,9 +62,41 @@ export default function AdminPage() {
     loadAll()
   }, [])
 
+  function flash(text) {
+    setMessage(text)
+    if (typeof window !== 'undefined') {
+      window.clearTimeout(window.__adminFlashTimer)
+      window.__adminFlashTimer = window.setTimeout(() => setMessage(''), 2600)
+    }
+  }
+
+  function resetCategoryForm() {
+    setCategoryForm(initialCategory)
+    setEditingCategoryId(null)
+  }
+
+  function resetProductForm() {
+    setProductForm(initialProduct)
+    setEditingProductId(null)
+  }
+
+  function resetImageForm() {
+    setImageForm(initialImage)
+    setEditingImageId(null)
+  }
+
+  async function handleUnauthorized(response) {
+    if (response.status === 401) {
+      router.replace('/admin/login')
+      return true
+    }
+    return false
+  }
+
   async function loadAll() {
     try {
       setLoading(true)
+
       const [sessionRes, statsRes, categoriesRes, productsRes, imagesRes, ordersRes, contactsRes] = await Promise.all([
         fetch('/api/admin/session', { cache: 'no-store' }),
         fetch('/api/admin/stats', { cache: 'no-store' }),
@@ -74,113 +107,160 @@ export default function AdminPage() {
         fetch('/api/admin/contacts', { cache: 'no-store' }),
       ])
 
+      if (await handleUnauthorized(sessionRes)) return
+
       if (sessionRes.ok) {
-        setSession((await sessionRes.json()).admin)
+        const sessionData = await sessionRes.json()
+        setSession(sessionData.admin)
       } else {
         router.replace('/admin/login')
         return
       }
+
       if (statsRes.ok) setStats(await statsRes.json())
       if (categoriesRes.ok) setCategories(await categoriesRes.json())
       if (productsRes.ok) setProducts(await productsRes.json())
       if (imagesRes.ok) setImages(await imagesRes.json())
       if (ordersRes.ok) setOrders(await ordersRes.json())
       if (contactsRes.ok) setContacts(await contactsRes.json())
+    } catch {
+      flash('No se pudo cargar el panel admin')
     } finally {
       setLoading(false)
     }
   }
 
-  function flash(text) {
-    setMessage(text)
-    window.clearTimeout(window.__adminFlashTimer)
-    window.__adminFlashTimer = window.setTimeout(() => setMessage(''), 2600)
-  }
-
   async function submitCategory(event) {
     event.preventDefault()
     setSaving(true)
-    const endpoint = editingCategoryId ? `/api/admin/categories/${editingCategoryId}` : '/api/admin/categories'
-    const method = editingCategoryId ? 'PUT' : 'POST'
 
-    const response = await fetch(endpoint, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(categoryForm),
-    })
-    const data = await response.json().catch(() => ({}))
-    setSaving(false)
-    if (!response.ok) return flash(data.error || 'No se pudo guardar la categoría')
-    setCategoryForm(initialCategory)
-    setEditingCategoryId(null)
-    flash('Categoría guardada')
-    loadAll()
+    try {
+      const endpoint = editingCategoryId ? `/api/admin/categories/${editingCategoryId}` : '/api/admin/categories'
+      const method = editingCategoryId ? 'PUT' : 'POST'
+
+      const response = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(categoryForm),
+      })
+
+      if (await handleUnauthorized(response)) return
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) return flash(data.error || 'No se pudo guardar la categoría')
+
+      resetCategoryForm()
+      flash('Categoría guardada')
+      await loadAll()
+    } catch {
+      flash('No se pudo guardar la categoría')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function submitProduct(event) {
     event.preventDefault()
     setSaving(true)
-    const endpoint = editingProductId ? `/api/admin/products/${editingProductId}` : '/api/admin/products'
-    const method = editingProductId ? 'PUT' : 'POST'
 
-    const response = await fetch(endpoint, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(productForm),
-    })
-    const data = await response.json().catch(() => ({}))
-    setSaving(false)
-    if (!response.ok) return flash(data.error || 'No se pudo guardar el producto')
-    setProductForm(initialProduct)
-    setEditingProductId(null)
-    flash('Producto guardado')
-    loadAll()
+    try {
+      const endpoint = editingProductId ? `/api/admin/products/${editingProductId}` : '/api/admin/products'
+      const method = editingProductId ? 'PUT' : 'POST'
+
+      const response = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productForm),
+      })
+
+      if (await handleUnauthorized(response)) return
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) return flash(data.error || 'No se pudo guardar el producto')
+
+      resetProductForm()
+      flash('Producto guardado')
+      await loadAll()
+    } catch {
+      flash('No se pudo guardar el producto')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function submitImage(event) {
     event.preventDefault()
     setSaving(true)
-    const endpoint = editingImageId ? `/api/admin/product-images/${editingImageId}` : '/api/admin/product-images'
-    const method = editingImageId ? 'PUT' : 'POST'
 
-    const response = await fetch(endpoint, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(imageForm),
-    })
-    const data = await response.json().catch(() => ({}))
-    setSaving(false)
-    if (!response.ok) return flash(data.error || 'No se pudo guardar la imagen')
-    setImageForm(initialImage)
-    setEditingImageId(null)
-    flash('Imagen guardada')
-    loadAll()
+    try {
+      const endpoint = editingImageId ? `/api/admin/product-images/${editingImageId}` : '/api/admin/product-images'
+      const method = editingImageId ? 'PUT' : 'POST'
+
+      const response = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(imageForm),
+      })
+
+      if (await handleUnauthorized(response)) return
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) return flash(data.error || 'No se pudo guardar la imagen')
+
+      resetImageForm()
+      flash('Imagen guardada')
+      await loadAll()
+    } catch {
+      flash('No se pudo guardar la imagen')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function deleteRow(url, label) {
     if (!window.confirm(`¿Eliminar ${label}?`)) return
-    const response = await fetch(url, { method: 'DELETE' })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) return flash(data.error || 'No se pudo eliminar')
-    flash('Eliminado correctamente')
-    loadAll()
+
+    try {
+      const response = await fetch(url, { method: 'DELETE' })
+
+      if (await handleUnauthorized(response)) return
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) return flash(data.error || 'No se pudo eliminar')
+
+      flash('Eliminado correctamente')
+      await loadAll()
+    } catch {
+      flash('No se pudo eliminar')
+    }
   }
 
   async function updateOrder(id, status) {
-    const response = await fetch(`/api/orders/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) return flash(data.error || 'No se pudo actualizar el pedido')
-    flash('Pedido actualizado')
-    loadAll()
+    try {
+      const response = await fetch(`/api/orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+
+      if (await handleUnauthorized(response)) return
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) return flash(data.error || 'No se pudo actualizar el pedido')
+
+      flash('Pedido actualizado')
+      await loadAll()
+    } catch {
+      flash('No se pudo actualizar el pedido')
+    }
   }
 
   async function logout() {
-    await fetch('/api/admin/logout', { method: 'POST' })
-    window.location.href = '/admin/login'
+    try {
+      await fetch('/api/admin/logout', { method: 'POST' })
+    } finally {
+      window.location.href = '/admin/login'
+    }
   }
 
   const tabs = [
@@ -192,8 +272,15 @@ export default function AdminPage() {
     { id: 'contacts', label: 'Contactos', icon: Mail },
   ]
 
-  const categoryOptions = useMemo(() => categories.map((item) => ({ id: item.id, label: item.name })), [categories])
-  const productOptions = useMemo(() => products.map((item) => ({ id: item.id, label: item.name })), [products])
+  const categoryOptions = useMemo(
+    () => categories.map((item) => ({ id: item.id, label: item.name })),
+    [categories]
+  )
+
+  const productOptions = useMemo(
+    () => products.map((item) => ({ id: item.id, label: item.name })),
+    [products]
+  )
 
   if (loading) {
     return <main className="min-h-screen bg-[#f5efe3] p-10 text-[#143047]">Cargando panel...</main>
@@ -212,9 +299,10 @@ export default function AdminPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${
-                  activeTab === tab.id ? 'bg-[#143047] text-white' : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
-                }`}
+                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${activeTab === tab.id
+                    ? 'bg-[#143047] text-white'
+                    : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
+                  }`}
               >
                 <tab.icon className="h-4 w-4" />
                 {tab.label}
@@ -223,8 +311,16 @@ export default function AdminPage() {
           </div>
 
           <div className="mt-8 flex flex-col gap-3">
-            <a href="/" className="rounded-full border border-[#d8cdb8] px-4 py-3 text-center text-sm font-semibold">Ver tienda</a>
-            <button onClick={logout} className="inline-flex items-center justify-center gap-2 rounded-full bg-[#143047] px-4 py-3 text-sm font-semibold text-white">
+            <a
+              href="/"
+              className="rounded-full border border-[#d8cdb8] px-4 py-3 text-center text-sm font-semibold"
+            >
+              Ver tienda
+            </a>
+            <button
+              onClick={logout}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-[#143047] px-4 py-3 text-sm font-semibold text-white"
+            >
               <LogOut className="h-4 w-4" />
               Cerrar sesión
             </button>
@@ -232,7 +328,11 @@ export default function AdminPage() {
         </aside>
 
         <div className="space-y-6 pb-10">
-          {message ? <div className="rounded-2xl bg-[#ecf8f4] px-5 py-3 text-sm font-medium text-[#0f6d5f]">{message}</div> : null}
+          {message ? (
+            <div className="rounded-2xl bg-[#ecf8f4] px-5 py-3 text-sm font-medium text-[#0f6d5f]">
+              {message}
+            </div>
+          ) : null}
 
           {activeTab === 'dashboard' && (
             <SectionCard title="Resumen" subtitle="Métricas generales del negocio y del catálogo.">
@@ -257,30 +357,106 @@ export default function AdminPage() {
           )}
 
           {activeTab === 'categories' && (
-            <SectionCard title="ABM de categorías" subtitle="Creá, editá y desactivá categorías para el catálogo.">
+            <SectionCard
+              title="ABM de categorías"
+              subtitle="Creá, editá y desactivá categorías para el catálogo."
+            >
               <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
                 <form onSubmit={submitCategory} className="space-y-4 rounded-3xl bg-[#f8f3ea] p-5">
-                  <input className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Nombre" value={categoryForm.name} onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })} />
-                  <input className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Slug" value={categoryForm.slug} onChange={(e) => setCategoryForm({ ...categoryForm, slug: e.target.value })} />
-                  <textarea className="min-h-[100px] w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Descripción" value={categoryForm.description} onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })} />
-                  <input type="number" className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Orden" value={categoryForm.sort_order} onChange={(e) => setCategoryForm({ ...categoryForm, sort_order: Number(e.target.value) })} />
-                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={categoryForm.active} onChange={(e) => setCategoryForm({ ...categoryForm, active: e.target.checked })} /> Activa</label>
+                  <input
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="Nombre"
+                    value={categoryForm.name}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                  />
+                  <input
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="Slug"
+                    value={categoryForm.slug}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, slug: e.target.value })}
+                  />
+                  <textarea
+                    className="min-h-[100px] w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="Descripción"
+                    value={categoryForm.description}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                  />
+                  <input
+                    type="number"
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="Orden"
+                    value={categoryForm.sort_order}
+                    onChange={(e) =>
+                      setCategoryForm({ ...categoryForm, sort_order: Number(e.target.value) })
+                    }
+                  />
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={categoryForm.active}
+                      onChange={(e) => setCategoryForm({ ...categoryForm, active: e.target.checked })}
+                    />
+                    Activa
+                  </label>
                   <div className="flex gap-3">
-                    <button disabled={saving} className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white">{editingCategoryId ? 'Actualizar' : 'Crear'}</button>
-                    {editingCategoryId ? <button type="button" onClick={() => { setEditingCategoryId(null); setCategoryForm(initialCategory) }} className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold">Cancelar</button> : null}
+                    <button
+                      disabled={saving}
+                      className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white"
+                    >
+                      {editingCategoryId ? 'Actualizar' : 'Crear'}
+                    </button>
+                    {editingCategoryId ? (
+                      <button
+                        type="button"
+                        onClick={resetCategoryForm}
+                        className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                      >
+                        Cancelar
+                      </button>
+                    ) : null}
                   </div>
                 </form>
+
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
-                    <thead><tr className="text-left text-[#5e89a6]"><th className="pb-3">Nombre</th><th className="pb-3">Slug</th><th className="pb-3">Orden</th><th className="pb-3">Estado</th><th className="pb-3">Acciones</th></tr></thead>
+                    <thead>
+                      <tr className="text-left text-[#5e89a6]">
+                        <th className="pb-3">Nombre</th>
+                        <th className="pb-3">Slug</th>
+                        <th className="pb-3">Orden</th>
+                        <th className="pb-3">Estado</th>
+                        <th className="pb-3">Acciones</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {categories.map((category) => (
                         <tr key={category.id} className="border-t border-[#efe6d5]">
-                          <td className="py-3 font-semibold">{category.name}</td><td className="py-3">{category.slug}</td><td className="py-3">{category.sort_order}</td><td className="py-3">{category.active ? 'Activa' : 'Inactiva'}</td>
+                          <td className="py-3 font-semibold">{category.name}</td>
+                          <td className="py-3">{category.slug}</td>
+                          <td className="py-3">{category.sort_order}</td>
+                          <td className="py-3">{category.active ? 'Activa' : 'Inactiva'}</td>
                           <td className="py-3">
                             <div className="flex gap-2">
-                              <button onClick={() => { setEditingCategoryId(category.id); setCategoryForm({ ...category, description: category.description || '' }) }} className="rounded-full border border-[#d8cdb8] px-3 py-1">Editar</button>
-                              <button onClick={() => deleteRow(`/api/admin/categories/${category.id}`, 'la categoría')} className="rounded-full border border-[#efc0b8] px-3 py-1 text-[#b34f42]">Eliminar</button>
+                              <button
+                                onClick={() => {
+                                  setEditingCategoryId(category.id)
+                                  setCategoryForm({
+                                    ...category,
+                                    description: category.description || '',
+                                  })
+                                }}
+                                className="rounded-full border border-[#d8cdb8] px-3 py-1"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                onClick={() =>
+                                  deleteRow(`/api/admin/categories/${category.id}`, 'la categoría')
+                                }
+                                className="rounded-full border border-[#efc0b8] px-3 py-1 text-[#b34f42]"
+                              >
+                                Eliminar
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -293,62 +469,175 @@ export default function AdminPage() {
           )}
 
           {activeTab === 'products' && (
-            <SectionCard title="ABM de productos" subtitle="Administrá precios, stock, categoría y visibilidad del catálogo.">
+            <SectionCard
+              title="ABM de productos"
+              subtitle="Administrá precios, stock, categoría y visibilidad del catálogo."
+            >
               <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
                 <form onSubmit={submitProduct} className="space-y-4 rounded-3xl bg-[#f8f3ea] p-5">
-                  <select className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" value={productForm.category_id} onChange={(e) => setProductForm({ ...productForm, category_id: e.target.value })}>
+                  <select
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    value={productForm.category_id}
+                    onChange={(e) => setProductForm({ ...productForm, category_id: e.target.value })}
+                  >
                     <option value="">Sin categoría</option>
-                    {categoryOptions.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}
+                    {categoryOptions.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.label}
+                      </option>
+                    ))}
                   </select>
-                  <input className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Nombre" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} />
-                  <input className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Slug" value={productForm.slug} onChange={(e) => setProductForm({ ...productForm, slug: e.target.value })} />
-                  <input className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Descripción corta" value={productForm.short_description} onChange={(e) => setProductForm({ ...productForm, short_description: e.target.value })} />
-                  <textarea className="min-h-[110px] w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Descripción completa" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} />
+
+                  <input
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="Nombre"
+                    value={productForm.name}
+                    onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                  />
+                  <input
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="Slug"
+                    value={productForm.slug}
+                    onChange={(e) => setProductForm({ ...productForm, slug: e.target.value })}
+                  />
+                  <input
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="Descripción corta"
+                    value={productForm.short_description}
+                    onChange={(e) =>
+                      setProductForm({ ...productForm, short_description: e.target.value })
+                    }
+                  />
+                  <textarea
+                    className="min-h-[110px] w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="Descripción completa"
+                    value={productForm.description}
+                    onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                  />
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <input type="number" className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Precio" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: Number(e.target.value) })} />
-                    <input type="number" className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Precio tachado" value={productForm.compare_at_price} onChange={(e) => setProductForm({ ...productForm, compare_at_price: e.target.value })} />
-                    <input className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="SKU" value={productForm.sku} onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })} />
-                    <input type="number" className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Stock" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: Number(e.target.value) })} />
+                    <input
+                      type="number"
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Precio"
+                      value={productForm.price}
+                      onChange={(e) => setProductForm({ ...productForm, price: Number(e.target.value) })}
+                    />
+                    <input
+                      type="number"
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Precio tachado"
+                      value={productForm.compare_at_price}
+                      onChange={(e) =>
+                        setProductForm({ ...productForm, compare_at_price: e.target.value })
+                      }
+                    />
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="SKU"
+                      value={productForm.sku}
+                      onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })}
+                    />
+                    <input
+                      type="number"
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Stock"
+                      value={productForm.stock}
+                      onChange={(e) => setProductForm({ ...productForm, stock: Number(e.target.value) })}
+                    />
                   </div>
                   <div className="flex flex-wrap gap-4 text-sm">
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={productForm.featured} onChange={(e) => setProductForm({ ...productForm, featured: e.target.checked })} /> Destacado</label>
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={productForm.active} onChange={(e) => setProductForm({ ...productForm, active: e.target.checked })} /> Activo</label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={productForm.featured}
+                        onChange={(e) =>
+                          setProductForm({ ...productForm, featured: e.target.checked })
+                        }
+                      />
+                      Destacado
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={productForm.active}
+                        onChange={(e) => setProductForm({ ...productForm, active: e.target.checked })}
+                      />
+                      Activo
+                    </label>
                   </div>
                   <div className="flex gap-3">
-                    <button disabled={saving} className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white">{editingProductId ? 'Actualizar' : 'Crear'}</button>
-                    {editingProductId ? <button type="button" onClick={() => { setEditingProductId(null); setProductForm(initialProduct) }} className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold">Cancelar</button> : null}
+                    <button
+                      disabled={saving}
+                      className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white"
+                    >
+                      {editingProductId ? 'Actualizar' : 'Crear'}
+                    </button>
+                    {editingProductId ? (
+                      <button
+                        type="button"
+                        onClick={resetProductForm}
+                        className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                      >
+                        Cancelar
+                      </button>
+                    ) : null}
                   </div>
                 </form>
+
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
-                    <thead><tr className="text-left text-[#5e89a6]"><th className="pb-3">Producto</th><th className="pb-3">Categoría</th><th className="pb-3">Precio</th><th className="pb-3">Stock</th><th className="pb-3">Estado</th><th className="pb-3">Acciones</th></tr></thead>
+                    <thead>
+                      <tr className="text-left text-[#5e89a6]">
+                        <th className="pb-3">Producto</th>
+                        <th className="pb-3">Categoría</th>
+                        <th className="pb-3">Precio</th>
+                        <th className="pb-3">Stock</th>
+                        <th className="pb-3">Estado</th>
+                        <th className="pb-3">Acciones</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {products.map((product) => (
                         <tr key={product.id} className="border-t border-[#efe6d5] align-top">
-                          <td className="py-3"><p className="font-semibold">{product.name}</p><p className="text-xs text-[#6d7e8b]">{product.slug}</p></td>
+                          <td className="py-3">
+                            <p className="font-semibold">{product.name}</p>
+                            <p className="text-xs text-[#6d7e8b]">{product.slug}</p>
+                          </td>
                           <td className="py-3">{product.categories?.name || '—'}</td>
                           <td className="py-3">$ {Number(product.price || 0).toLocaleString('es-AR')}</td>
                           <td className="py-3">{product.stock}</td>
-                          <td className="py-3">{product.active ? 'Activo' : 'Inactivo'} {product.featured ? '· Destacado' : ''}</td>
+                          <td className="py-3">
+                            {product.active ? 'Activo' : 'Inactivo'} {product.featured ? '· Destacado' : ''}
+                          </td>
                           <td className="py-3">
                             <div className="flex flex-wrap gap-2">
-                              <button onClick={() => {
-                                setProductForm({
-                                  category_id: product.category_id || '',
-                                  name: product.name || '',
-                                  slug: product.slug || '',
-                                  short_description: product.short_description || '',
-                                  description: product.description || '',
-                                  price: Number(product.price || 0),
-                                  compare_at_price: product.compare_at_price ?? '',
-                                  sku: product.sku || '',
-                                  stock: Number(product.stock || 0),
-                                  featured: Boolean(product.featured),
-                                  active: Boolean(product.active),
-                                })
-                                setEditingProductId(product.id)
-                              }} className="rounded-full border border-[#d8cdb8] px-3 py-1">Editar</button>
-                              <button onClick={() => deleteRow(`/api/admin/products/${product.id}`, 'el producto')} className="rounded-full border border-[#efc0b8] px-3 py-1 text-[#b34f42]">Eliminar</button>
+                              <button
+                                onClick={() => {
+                                  setProductForm({
+                                    category_id: product.category_id || '',
+                                    name: product.name || '',
+                                    slug: product.slug || '',
+                                    short_description: product.short_description || '',
+                                    description: product.description || '',
+                                    price: Number(product.price || 0),
+                                    compare_at_price: product.compare_at_price ?? '',
+                                    sku: product.sku || '',
+                                    stock: Number(product.stock || 0),
+                                    featured: Boolean(product.featured),
+                                    active: Boolean(product.active),
+                                  })
+                                  setEditingProductId(product.id)
+                                }}
+                                className="rounded-full border border-[#d8cdb8] px-3 py-1"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                onClick={() => deleteRow(`/api/admin/products/${product.id}`, 'el producto')}
+                                className="rounded-full border border-[#efc0b8] px-3 py-1 text-[#b34f42]"
+                              >
+                                Eliminar
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -361,35 +650,103 @@ export default function AdminPage() {
           )}
 
           {activeTab === 'images' && (
-            <SectionCard title="ABM de imágenes" subtitle="Asociá múltiples imágenes por producto con orden y texto alternativo.">
+            <SectionCard
+              title="ABM de imágenes"
+              subtitle="Asociá múltiples imágenes por producto con orden y texto alternativo."
+            >
               <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
                 <form onSubmit={submitImage} className="space-y-4 rounded-3xl bg-[#f8f3ea] p-5">
-                  <select className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" value={imageForm.product_id} onChange={(e) => setImageForm({ ...imageForm, product_id: e.target.value })}>
+                  <select
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    value={imageForm.product_id}
+                    onChange={(e) => setImageForm({ ...imageForm, product_id: e.target.value })}
+                  >
                     <option value="">Seleccioná un producto</option>
-                    {productOptions.map((product) => <option key={product.id} value={product.id}>{product.label}</option>)}
+                    {productOptions.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.label}
+                      </option>
+                    ))}
                   </select>
-                  <input className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="URL de imagen" value={imageForm.image_url} onChange={(e) => setImageForm({ ...imageForm, image_url: e.target.value })} />
-                  <input className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Texto alternativo" value={imageForm.alt_text} onChange={(e) => setImageForm({ ...imageForm, alt_text: e.target.value })} />
-                  <input type="number" className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3" placeholder="Orden" value={imageForm.sort_order} onChange={(e) => setImageForm({ ...imageForm, sort_order: Number(e.target.value) })} />
+                  <input
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="URL de imagen"
+                    value={imageForm.image_url}
+                    onChange={(e) => setImageForm({ ...imageForm, image_url: e.target.value })}
+                  />
+                  <input
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="Texto alternativo"
+                    value={imageForm.alt_text}
+                    onChange={(e) => setImageForm({ ...imageForm, alt_text: e.target.value })}
+                  />
+                  <input
+                    type="number"
+                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                    placeholder="Orden"
+                    value={imageForm.sort_order}
+                    onChange={(e) => setImageForm({ ...imageForm, sort_order: Number(e.target.value) })}
+                  />
                   <div className="flex gap-3">
-                    <button disabled={saving} className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white">{editingImageId ? 'Actualizar' : 'Crear'}</button>
-                    {editingImageId ? <button type="button" onClick={() => { setEditingImageId(null); setImageForm(initialImage) }} className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold">Cancelar</button> : null}
+                    <button
+                      disabled={saving}
+                      className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white"
+                    >
+                      {editingImageId ? 'Actualizar' : 'Crear'}
+                    </button>
+                    {editingImageId ? (
+                      <button
+                        type="button"
+                        onClick={resetImageForm}
+                        className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                      >
+                        Cancelar
+                      </button>
+                    ) : null}
                   </div>
                 </form>
+
                 <div className="space-y-3">
                   {images.map((image) => (
-                    <div key={image.id} className="flex flex-col gap-4 rounded-3xl border border-[#efe6d5] bg-white p-4 md:flex-row md:items-center md:justify-between">
+                    <div
+                      key={image.id}
+                      className="flex flex-col gap-4 rounded-3xl border border-[#efe6d5] bg-white p-4 md:flex-row md:items-center md:justify-between"
+                    >
                       <div className="flex min-w-0 items-center gap-4">
-                        <img src={image.image_url} alt={image.alt_text || 'Imagen'} className="h-20 w-20 rounded-2xl object-cover" />
+                        <img
+                          src={image.image_url}
+                          alt={image.alt_text || 'Imagen'}
+                          className="h-20 w-20 rounded-2xl object-cover"
+                        />
                         <div className="min-w-0">
                           <p className="font-semibold text-[#143047]">{image.products?.name || 'Producto'}</p>
                           <p className="truncate text-sm text-[#4e6475]">{image.image_url}</p>
-                          <p className="text-xs text-[#6d7e8b]">Alt: {image.alt_text || '—'} · Orden: {image.sort_order}</p>
+                          <p className="text-xs text-[#6d7e8b]">
+                            Alt: {image.alt_text || '—'} · Orden: {image.sort_order}
+                          </p>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => { setEditingImageId(image.id); setImageForm({ product_id: image.product_id, image_url: image.image_url || '', alt_text: image.alt_text || '', sort_order: image.sort_order || 0 }) }} className="rounded-full border border-[#d8cdb8] px-3 py-1 text-sm">Editar</button>
-                        <button onClick={() => deleteRow(`/api/admin/product-images/${image.id}`, 'la imagen')} className="rounded-full border border-[#efc0b8] px-3 py-1 text-sm text-[#b34f42]">Eliminar</button>
+                        <button
+                          onClick={() => {
+                            setEditingImageId(image.id)
+                            setImageForm({
+                              product_id: image.product_id,
+                              image_url: image.image_url || '',
+                              alt_text: image.alt_text || '',
+                              sort_order: image.sort_order || 0,
+                            })
+                          }}
+                          className="rounded-full border border-[#d8cdb8] px-3 py-1 text-sm"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => deleteRow(`/api/admin/product-images/${image.id}`, 'la imagen')}
+                          className="rounded-full border border-[#efc0b8] px-3 py-1 text-sm text-[#b34f42]"
+                        >
+                          Eliminar
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -401,20 +758,37 @@ export default function AdminPage() {
           {activeTab === 'orders' && (
             <SectionCard title="Pedidos" subtitle="Seguimiento de estado y control del checkout.">
               <div className="space-y-4">
-                {orders.length === 0 ? <p className="text-sm text-[#4e6475]">Todavía no hay pedidos registrados.</p> : null}
+                {orders.length === 0 ? (
+                  <p className="text-sm text-[#4e6475]">Todavía no hay pedidos registrados.</p>
+                ) : null}
+
                 {orders.map((order) => (
                   <div key={order.id} className="rounded-3xl border border-[#efe6d5] bg-white p-5">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div>
                         <p className="font-semibold text-[#143047]">{order.customer_name}</p>
-                        <p className="text-sm text-[#4e6475]">{order.customer_phone} · {order.customer_email || 'sin email'}</p>
-                        <p className="mt-1 text-xs text-[#6d7e8b]">{order.external_reference || order.id}</p>
+                        <p className="text-sm text-[#4e6475]">
+                          {order.customer_phone} · {order.customer_email || 'sin email'}
+                        </p>
+                        <p className="mt-1 text-xs text-[#6d7e8b]">
+                          {order.external_reference || order.id}
+                        </p>
                       </div>
+
                       <div className="flex flex-col gap-2 md:items-end">
-                        <p className="text-lg font-extrabold">$ {Number(order.total || 0).toLocaleString('es-AR')}</p>
+                        <p className="text-lg font-extrabold">
+                          $ {Number(order.total || 0).toLocaleString('es-AR')}
+                        </p>
                         <div className="flex flex-wrap gap-2">
                           {['pending', 'approved', 'cancelled'].map((status) => (
-                            <button key={status} onClick={() => updateOrder(order.id, status)} className={`rounded-full px-3 py-1 text-xs font-semibold ${order.status === status ? 'bg-[#143047] text-white' : 'border border-[#d8cdb8]'}`}>
+                            <button
+                              key={status}
+                              onClick={() => updateOrder(order.id, status)}
+                              className={`rounded-full px-3 py-1 text-xs font-semibold ${order.status === status
+                                  ? 'bg-[#143047] text-white'
+                                  : 'border border-[#d8cdb8]'
+                                }`}
+                            >
                               {status}
                             </button>
                           ))}
@@ -428,15 +802,27 @@ export default function AdminPage() {
           )}
 
           {activeTab === 'contacts' && (
-            <SectionCard title="Contactos" subtitle="Consultas recibidas desde el formulario público.">
+            <SectionCard
+              title="Contactos"
+              subtitle="Consultas recibidas desde el formulario público."
+            >
               <div className="space-y-4">
-                {contacts.length === 0 ? <p className="text-sm text-[#4e6475]">Todavía no hay consultas registradas.</p> : null}
+                {contacts.length === 0 ? (
+                  <p className="text-sm text-[#4e6475]">Todavía no hay consultas registradas.</p>
+                ) : null}
+
                 {contacts.map((contact) => (
                   <div key={contact.id} className="rounded-3xl border border-[#efe6d5] bg-white p-5">
                     <p className="font-semibold text-[#143047]">{contact.name || 'Sin nombre'}</p>
-                    <p className="mt-1 text-sm text-[#4e6475]">{contact.email || 'sin email'} · {contact.phone || 'sin teléfono'}</p>
-                    <p className="mt-2 text-sm text-[#4e6475]">Motivo: {contact.reason || '—'} · Producto: {contact.product || '—'}</p>
-                    <p className="mt-3 text-sm leading-6 text-[#143047]">{contact.message || 'Sin mensaje.'}</p>
+                    <p className="mt-1 text-sm text-[#4e6475]">
+                      {contact.email || 'sin email'} · {contact.phone || 'sin teléfono'}
+                    </p>
+                    <p className="mt-2 text-sm text-[#4e6475]">
+                      Motivo: {contact.reason || '—'} · Producto: {contact.product || '—'}
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-[#143047]">
+                      {contact.message || 'Sin mensaje.'}
+                    </p>
                   </div>
                 ))}
               </div>

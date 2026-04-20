@@ -18,20 +18,27 @@ Reglas:
 - No hables de política, medicina ni temas ajenos a la tienda.
 `
 
+const MAX_MESSAGE_LENGTH = 1200
+const MAX_HISTORY_MESSAGES = 10
+const RATE_LIMIT_WINDOW_MS = 60 * 1000
+const RATE_LIMIT_MAX_REQUESTS = 12
+
 function getSupabaseClient() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key =
-        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-    if (!url || !key) return null
-    return createClient(url, key, { auth: { persistSession: false } })
+    if (!url || !anonKey) return null
+
+    return createClient(url, anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+    })
 }
 
 function normalizeText(value) {
     return String(value || '')
         .toLowerCase()
         .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
+        .replace(/[\u0300-\u036f]/g, '')
         .trim()
 }
 
@@ -57,6 +64,7 @@ function maybeProductQuestion(message) {
 
 function buildSearchTerms(message) {
     const text = normalizeText(message)
+
     return text
         .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
         .split(/\s+/)
@@ -115,7 +123,7 @@ async function findRelevantProducts(message) {
     return data
         .map((product) => {
             const haystack = normalizeText(
-                `${product.name} ${product.short_description || ''} ${product.description || ''}`
+                `${product.name} ${product.slug || ''} ${product.short_description || ''} ${product.description || ''}`
             )
 
             let score = 0
@@ -170,7 +178,11 @@ function buildInput(message, messages = [], productContext = '') {
                     typeof m.content === 'string' &&
                     (m.role === 'user' || m.role === 'assistant')
             )
-            .slice(-10)
+            .slice(-MAX_HISTORY_MESSAGES)
+            .map((m) => ({
+                role: m.role,
+                content: String(m.content).trim().slice(0, MAX_MESSAGE_LENGTH),
+            }))
         : []
 
     return [
@@ -178,13 +190,10 @@ function buildInput(message, messages = [], productContext = '') {
             role: 'system',
             content: `${STORE_CONTEXT}${productContext}`,
         },
-        ...conversation.map((m) => ({
-            role: m.role,
-            content: m.content,
-        })),
+        ...conversation,
         {
             role: 'user',
-            content: String(message).trim(),
+            content: String(message).trim().slice(0, MAX_MESSAGE_LENGTH),
         },
     ]
 }
@@ -302,22 +311,93 @@ function shouldFallbackToGroq(error) {
     )
 }
 
+function getClientIp(req) {
+    const forwardedFor = req.headers.get('x-forwarded-for')
+    if (forwardedFor) {
+        return forwardedFor.split(',')[0].trim()
+    }
+
+    const realIp = req.headers.get('x-real-ip')
+    if (realIp) return realIp.trim()
+
+    return 'unknown'
+}
+
+function getRateLimitStore() {
+    if (!globalThis.__chatRateLimitStore) {
+        globalThis.__chatRateLimitStore = new Map()
+    }
+
+    return globalThis.__chatRateLimitStore
+}
+
+function checkRateLimit(key) {
+    const store = getRateLimitStore()
+    const now = Date.now()
+    const current = store.get(key)
+
+    if (!current || current.resetAt <= now) {
+        const next = {
+            count: 1,
+            resetAt: now + RATE_LIMIT_WINDOW_MS,
+        }
+        store.set(key, next)
+        return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1, resetAt: next.resetAt }
+    }
+
+    if (current.count >= RATE_LIMIT_MAX_REQUESTS) {
+        return { allowed: false, remaining: 0, resetAt: current.resetAt }
+    }
+
+    current.count += 1
+    store.set(key, current)
+
+    return {
+        allowed: true,
+        remaining: Math.max(0, RATE_LIMIT_MAX_REQUESTS - current.count),
+        resetAt: current.resetAt,
+    }
+}
+
 export async function POST(req) {
     try {
-        const { message, messages = [] } = await req.json()
+        const ip = getClientIp(req)
+        const rateLimit = checkRateLimit(ip)
 
-        if (!message || !String(message).trim()) {
+        if (!rateLimit.allowed) {
+            return NextResponse.json(
+                { error: 'Demasiadas consultas al chat. Intentá nuevamente en un minuto.' },
+                {
+                    status: 429,
+                    headers: {
+                        'Retry-After': String(Math.ceil((rateLimit.resetAt - Date.now()) / 1000)),
+                    },
+                }
+            )
+        }
+
+        const { message, messages = [] } = await req.json()
+        const cleanMessage = String(message || '').trim()
+
+        if (!cleanMessage) {
             return NextResponse.json({ error: 'Falta message' }, { status: 400 })
+        }
+
+        if (cleanMessage.length > MAX_MESSAGE_LENGTH) {
+            return NextResponse.json(
+                { error: `El mensaje no puede superar ${MAX_MESSAGE_LENGTH} caracteres` },
+                { status: 400 }
+            )
         }
 
         let products = []
 
-        if (maybeProductQuestion(message)) {
-            products = await findRelevantProducts(message)
+        if (maybeProductQuestion(cleanMessage)) {
+            products = await findRelevantProducts(cleanMessage)
         }
 
         const productContext = buildProductContext(products)
-        const input = buildInput(message, messages, productContext)
+        const input = buildInput(cleanMessage, messages, productContext)
 
         try {
             const result = await callOpenAI(input)

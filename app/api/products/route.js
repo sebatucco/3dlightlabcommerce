@@ -6,11 +6,16 @@ export const dynamic = 'force-dynamic'
 
 function getSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  if (!url || !key) return null
+  if (!url || !anonKey) return null
 
-  return createClient(url, key)
+  return createClient(url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  })
 }
 
 function slugifyCategory(value) {
@@ -18,7 +23,7 @@ function slugifyCategory(value) {
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '')
 }
@@ -50,31 +55,25 @@ function normalizeProduct(product, categoryMap = new Map()) {
   const categoryRow = mappedCategory || joinedCategory || null
 
   const mediaRows = Array.isArray(product?.product_images)
-    ? [...product.product_images].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    ? [...product.product_images].sort((a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0))
     : []
 
   const productImages = mediaRows
     .map((item) => ({
-      id: item.id,
-      image_url: item.image_url,
-      alt_text: item.alt_text || product?.name || 'Producto',
-      sort_order: item.sort_order ?? 0,
-      media_type: item.media_type || 'image',
-      use_case: item.use_case || null,
-      is_primary: Boolean(item.is_primary),
+      id: item?.id || null,
+      image_url: item?.image_url || '',
+      alt_text: item?.alt_text || product?.name || 'Producto',
+      sort_order: item?.sort_order ?? 0,
+      media_type: item?.media_type || 'image',
+      use_case: item?.use_case || null,
+      is_primary: Boolean(item?.is_primary),
     }))
     .filter((item) => item.image_url)
 
   const catalogImage =
-    productImages.find(
-      (item) => item.media_type === 'image' && item.use_case === 'catalog'
-    ) ||
-    productImages.find(
-      (item) => item.media_type === 'image' && item.is_primary === true
-    ) ||
-    productImages.find(
-      (item) => item.media_type === 'image'
-    ) ||
+    productImages.find((item) => item.media_type === 'image' && item.use_case === 'catalog') ||
+    productImages.find((item) => item.media_type === 'image' && item.is_primary === true) ||
+    productImages.find((item) => item.media_type === 'image') ||
     null
 
   const categoryName = categoryRow?.name || null
@@ -158,21 +157,26 @@ function buildFallback(categoryFilter) {
   return products.filter((item) => item.category_slug === value)
 }
 
+function responseNoStore(payload, status = 200) {
+  return NextResponse.json(payload, {
+    status,
+    headers: { 'Cache-Control': 'no-store, max-age=0' },
+  })
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
-  const categoryFilter = searchParams.get('category')?.trim()
+  const rawCategoryFilter = searchParams.get('category')
+  const categoryFilter = rawCategoryFilter ? rawCategoryFilter.trim() : ''
   const supabase = getSupabaseClient()
 
   if (!supabase) {
-    return NextResponse.json(
-      {
-        products: buildFallback(categoryFilter),
-        categories: [],
-        fallback: true,
-        error: 'Supabase no configurado',
-      },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-    )
+    return responseNoStore({
+      products: buildFallback(categoryFilter),
+      categories: [],
+      fallback: true,
+      error: 'Supabase no configurado',
+    })
   }
 
   try {
@@ -209,27 +213,21 @@ export async function GET(request) {
     ])
 
     if (categoriesResult.error) {
-      return NextResponse.json(
-        {
-          products: buildFallback(categoryFilter),
-          categories: [],
-          fallback: true,
-          error: categoriesResult.error.message,
-        },
-        { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-      )
+      return responseNoStore({
+        products: buildFallback(categoryFilter),
+        categories: [],
+        fallback: true,
+        error: categoriesResult.error.message,
+      })
     }
 
     if (productsResult.error) {
-      return NextResponse.json(
-        {
-          products: buildFallback(categoryFilter),
-          categories: (categoriesResult.data || []).map(normalizeCategoryRecord).filter(Boolean),
-          fallback: true,
-          error: productsResult.error.message,
-        },
-        { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-      )
+      return responseNoStore({
+        products: buildFallback(categoryFilter),
+        categories: (categoriesResult.data || []).map(normalizeCategoryRecord).filter(Boolean),
+        fallback: true,
+        error: productsResult.error.message,
+      })
     }
 
     const normalizedCategories = (categoriesResult.data || [])
@@ -242,29 +240,23 @@ export async function GET(request) {
       ? productsResult.data.map((product) => normalizeProduct(product, categoryMap))
       : []
 
-    const value = categoryFilter ? slugifyCategory(categoryFilter) : null
+    const normalizedFilter = categoryFilter ? slugifyCategory(categoryFilter) : null
 
-    const products = value
-      ? normalizedProducts.filter((item) => item.category_slug === value)
+    const products = normalizedFilter
+      ? normalizedProducts.filter((item) => item.category_slug === normalizedFilter)
       : normalizedProducts
 
-    return NextResponse.json(
-      {
-        products,
-        categories: normalizedCategories,
-        fallback: false,
-      },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-    )
+    return responseNoStore({
+      products,
+      categories: normalizedCategories,
+      fallback: false,
+    })
   } catch (error) {
-    return NextResponse.json(
-      {
-        products: buildFallback(categoryFilter),
-        categories: [],
-        fallback: true,
-        error: error?.message || 'No se pudieron obtener los productos',
-      },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-    )
+    return responseNoStore({
+      products: buildFallback(categoryFilter),
+      categories: [],
+      fallback: true,
+      error: error?.message || 'No se pudieron obtener los productos',
+    })
   }
 }

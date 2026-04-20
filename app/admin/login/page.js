@@ -14,17 +14,19 @@ export default function AdminLoginPage() {
 
   async function handleSubmit(event) {
     event.preventDefault()
+    if (loading) return
+
     setLoading(true)
     setError('')
 
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: form.email,
-        password: form.password,
-      })
+      const email = form.email.trim().toLowerCase()
+      const password = form.password
 
-      console.log('LOGIN DATA', data)
-      console.log('SIGN IN ERROR', signInError)
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
       if (signInError || !data.session?.access_token) {
         setError(signInError?.message || 'No se pudo iniciar sesión en Supabase')
@@ -39,9 +41,6 @@ export default function AdminLoginPage() {
 
       const payload = await response.json().catch(() => ({}))
 
-      console.log('ADMIN LOGIN STATUS', response.status)
-      console.log('ADMIN LOGIN PAYLOAD', payload)
-
       if (!response.ok) {
         await supabase.auth.signOut()
         setError(payload.error || 'Tu usuario no tiene permisos de administrador')
@@ -50,8 +49,11 @@ export default function AdminLoginPage() {
 
       router.replace('/admin')
       router.refresh()
-    } catch (err) {
-      console.error('LOGIN ERROR:', err)
+    } catch {
+      try {
+        await supabase.auth.signOut()
+      } catch { }
+
       setError('Ocurrió un error al iniciar sesión')
     } finally {
       setLoading(false)
@@ -73,17 +75,20 @@ export default function AdminLoginPage() {
             <input
               type="email"
               required
+              autoComplete="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 outline-none transition focus:border-[#5e89a6]"
               placeholder="admin@tuempresa.com"
             />
           </div>
+
           <div>
             <label className="mb-2 block text-sm font-semibold">Contraseña</label>
             <input
               type="password"
               required
+              autoComplete="current-password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 outline-none transition focus:border-[#5e89a6]"
@@ -91,12 +96,16 @@ export default function AdminLoginPage() {
             />
           </div>
 
-          {error ? <p className="rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b34f42]">{error}</p> : null}
+          {error ? (
+            <p className="rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b34f42]">
+              {error}
+            </p>
+          ) : null}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold uppercase tracking-[0.15em] text-white transition hover:bg-[#214a69] disabled:opacity-60"
+            className="w-full rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold uppercase tracking-[0.15em] text-white transition hover:bg-[#214a69] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? 'Ingresando...' : 'Entrar al panel'}
           </button>
