@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BarChart3, FolderTree, Image as ImageIcon, LogOut, Mail, Package, ShoppingCart } from 'lucide-react'
 
-const initialCategory = { name: '', slug: '', description: '', sort_order: 0, active: true }
+const initialCategory = { name: '', slug: '', description: '', sort_order: 0, active: true, sku_prefix: '' }
 const initialProduct = {
   category_id: '',
   name: '',
@@ -33,6 +33,40 @@ function SectionCard({ title, subtitle, children, action }) {
       {children}
     </section>
   )
+}
+
+function normalizeSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+function normalizeSkuPrefix(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8)
+}
+
+function isValidUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || '').trim()
+  )
+}
+
+function toSafeNumber(value, fallback = 0) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
+
+function toSafeInteger(value, fallback = 0) {
+  const num = Number(value)
+  return Number.isInteger(num) ? num : fallback
 }
 
 export default function AdminPage() {
@@ -75,9 +109,38 @@ export default function AdminPage() {
     setEditingCategoryId(null)
   }
 
+  function selectCategory(category) {
+    setEditingCategoryId(category.id)
+    setCategoryForm({
+      name: category.name || '',
+      slug: category.slug || '',
+      description: category.description || '',
+      sort_order: Number(category.sort_order || 0),
+      active: Boolean(category.active),
+      sku_prefix: category.sku_prefix || '',
+    })
+  }
+
   function resetProductForm() {
     setProductForm(initialProduct)
     setEditingProductId(null)
+  }
+
+  function selectProduct(product) {
+    setEditingProductId(product.id)
+    setProductForm({
+      category_id: product.category_id || '',
+      name: product.name || '',
+      slug: product.slug || '',
+      short_description: product.short_description || '',
+      description: product.description || '',
+      price: Number(product.price || 0),
+      compare_at_price: product.compare_at_price == null ? '' : Number(product.compare_at_price),
+      sku: product.sku || '',
+      stock: Number(product.stock || 0),
+      featured: Boolean(product.featured),
+      active: Boolean(product.active),
+    })
   }
 
   function resetImageForm() {
@@ -130,8 +193,85 @@ export default function AdminPage() {
     }
   }
 
+  function validateCategoryForm() {
+    const name = String(categoryForm.name || '').trim()
+    const slug = normalizeSlug(categoryForm.slug || categoryForm.name || '')
+    const sku_prefix = normalizeSkuPrefix(categoryForm.sku_prefix || '')
+
+    if (!name) {
+      flash('La categoría necesita nombre')
+      return null
+    }
+
+    if (!slug) {
+      flash('La categoría necesita slug válido')
+      return null
+    }
+
+    return {
+      name,
+      slug,
+      description: String(categoryForm.description || '').trim(),
+      sort_order: Number.isFinite(Number(categoryForm.sort_order)) ? Number(categoryForm.sort_order) : 0,
+      active: categoryForm.active !== false,
+      sku_prefix: sku_prefix || null,
+    }
+  }
+
+  function validateProductForm() {
+    const name = String(productForm.name || '').trim()
+    const slug = normalizeSlug(productForm.slug || productForm.name || '')
+    const short_description = String(productForm.short_description || '').trim()
+    const description = String(productForm.description || '').trim()
+    const price = toSafeNumber(productForm.price, 0)
+    const compare_at_price =
+      productForm.compare_at_price === '' || productForm.compare_at_price == null
+        ? ''
+        : toSafeNumber(productForm.compare_at_price, 0)
+    const stock = Math.max(0, toSafeInteger(productForm.stock, 0))
+    const category_id = String(productForm.category_id || '').trim() || null
+
+    if (!name) {
+      flash('El producto necesita nombre')
+      return null
+    }
+
+    if (!slug) {
+      flash('El producto necesita slug válido')
+      return null
+    }
+
+    if (price < 0) {
+      flash('El precio no puede ser negativo')
+      return null
+    }
+
+    if (compare_at_price !== '' && Number(compare_at_price) < 0) {
+      flash('El precio tachado no puede ser negativo')
+      return null
+    }
+
+    return {
+      category_id,
+      name,
+      slug,
+      short_description,
+      description,
+      price,
+      compare_at_price,
+      stock,
+      featured: Boolean(productForm.featured),
+      active: productForm.active !== false,
+    }
+  }
+
   async function submitCategory(event) {
     event.preventDefault()
+    if (saving) return
+
+    const payload = validateCategoryForm()
+    if (!payload) return
+
     setSaving(true)
 
     try {
@@ -141,7 +281,7 @@ export default function AdminPage() {
       const response = await fetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(categoryForm),
+        body: JSON.stringify(payload),
       })
 
       if (await handleUnauthorized(response)) return
@@ -150,7 +290,7 @@ export default function AdminPage() {
       if (!response.ok) return flash(data.error || 'No se pudo guardar la categoría')
 
       resetCategoryForm()
-      flash('Categoría guardada')
+      flash(editingCategoryId ? 'Categoría actualizada' : 'Categoría creada')
       await loadAll()
     } catch {
       flash('No se pudo guardar la categoría')
@@ -161,6 +301,11 @@ export default function AdminPage() {
 
   async function submitProduct(event) {
     event.preventDefault()
+    if (saving) return
+
+    const payload = validateProductForm()
+    if (!payload) return
+
     setSaving(true)
 
     try {
@@ -170,7 +315,7 @@ export default function AdminPage() {
       const response = await fetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(productForm),
+        body: JSON.stringify(payload),
       })
 
       if (await handleUnauthorized(response)) return
@@ -179,7 +324,7 @@ export default function AdminPage() {
       if (!response.ok) return flash(data.error || 'No se pudo guardar el producto')
 
       resetProductForm()
-      flash('Producto guardado')
+      flash(editingProductId ? 'Producto actualizado' : 'Producto creado')
       await loadAll()
     } catch {
       flash('No se pudo guardar el producto')
@@ -214,6 +359,68 @@ export default function AdminPage() {
       flash('No se pudo guardar la imagen')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function deleteCategory(category) {
+    const id = String(category?.id || editingCategoryId || '').trim()
+
+    if (!isValidUuid(id)) {
+      flash('La categoría no tiene un id válido')
+      return
+    }
+
+    const categoryName = category?.name || categoryForm.name || 'sin nombre'
+    const confirmText = `¿Dar de baja la categoría "${categoryName}"?`
+    if (!window.confirm(confirmText)) return
+
+    try {
+      const response = await fetch(`/api/admin/categories/${id}`, { method: 'DELETE' })
+
+      if (await handleUnauthorized(response)) return
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) return flash(data.error || 'No se pudo eliminar la categoría')
+
+      if (editingCategoryId === id) {
+        resetCategoryForm()
+      }
+
+      flash('Categoría dada de baja')
+      await loadAll()
+    } catch {
+      flash('No se pudo eliminar la categoría')
+    }
+  }
+
+  async function deleteProduct(product) {
+    const id = String(product?.id || editingProductId || '').trim()
+
+    if (!isValidUuid(id)) {
+      flash('El producto no tiene un id válido')
+      return
+    }
+
+    const productName = product?.name || productForm.name || 'sin nombre'
+    const confirmText = `¿Dar de baja el producto "${productName}"?`
+    if (!window.confirm(confirmText)) return
+
+    try {
+      const response = await fetch(`/api/admin/products/${id}`, { method: 'DELETE' })
+
+      if (await handleUnauthorized(response)) return
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) return flash(data.error || 'No se pudo eliminar el producto')
+
+      if (editingProductId === id) {
+        resetProductForm()
+      }
+
+      flash('Producto dado de baja')
+      await loadAll()
+    } catch {
+      flash('No se pudo eliminar el producto')
     }
   }
 
@@ -273,13 +480,28 @@ export default function AdminPage() {
   ]
 
   const categoryOptions = useMemo(
-    () => categories.map((item) => ({ id: item.id, label: item.name })),
+    () => categories.map((item) => ({ id: item.id, label: item.name, sku_prefix: item.sku_prefix || null })),
     [categories]
   )
 
   const productOptions = useMemo(
     () => products.map((item) => ({ id: item.id, label: item.name })),
     [products]
+  )
+
+  const selectedCategory = useMemo(
+    () => categories.find((item) => item.id === editingCategoryId) || null,
+    [categories, editingCategoryId]
+  )
+
+  const selectedProduct = useMemo(
+    () => products.find((item) => item.id === editingProductId) || null,
+    [products, editingProductId]
+  )
+
+  const selectedProductCategory = useMemo(
+    () => categoryOptions.find((item) => item.id === productForm.category_id) || null,
+    [categoryOptions, productForm.category_id]
   )
 
   if (loading) {
@@ -300,8 +522,8 @@ export default function AdminPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${activeTab === tab.id
-                  ? 'bg-[#143047] text-white'
-                  : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
+                    ? 'bg-[#143047] text-white'
+                    : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
                   }`}
               >
                 <tab.icon className="h-4 w-4" />
@@ -359,37 +581,97 @@ export default function AdminPage() {
           {activeTab === 'categories' && (
             <SectionCard
               title="ABM de categorías"
-              subtitle="Creá, editá y desactivá categorías para el catálogo."
+              subtitle="Seleccioná una categoría para editarla desde el formulario o creá una nueva."
             >
-              <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+              <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
                 <form onSubmit={submitCategory} className="space-y-4 rounded-3xl bg-[#f8f3ea] p-5">
-                  <input
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Nombre"
-                    value={categoryForm.name}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                  />
-                  <input
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Slug"
-                    value={categoryForm.slug}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, slug: e.target.value })}
-                  />
-                  <textarea
-                    className="min-h-[100px] w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Descripción"
-                    value={categoryForm.description}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
-                  />
-                  <input
-                    type="number"
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Orden"
-                    value={categoryForm.sort_order}
-                    onChange={(e) =>
-                      setCategoryForm({ ...categoryForm, sort_order: Number(e.target.value) })
-                    }
-                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-[#143047]">
+                        {editingCategoryId ? 'Editar categoría' : 'Nueva categoría'}
+                      </h3>
+                      <p className="text-xs text-[#6d7e8b]">
+                        {editingCategoryId
+                          ? 'Estás editando la categoría seleccionada.'
+                          : 'Completá los datos para crear una categoría.'}
+                      </p>
+                    </div>
+
+                    {editingCategoryId ? (
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#143047]">
+                        Seleccionada
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Nombre</label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Ej: Lámparas de mesa"
+                      value={categoryForm.name}
+                      onChange={(e) =>
+                        setCategoryForm((prev) => {
+                          const nextName = e.target.value
+                          const shouldAutofillSlug =
+                            !prev.slug || prev.slug === normalizeSlug(prev.name || '')
+                          return {
+                            ...prev,
+                            name: nextName,
+                            slug: shouldAutofillSlug ? normalizeSlug(nextName) : prev.slug,
+                          }
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Slug</label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Ej: lamparas-de-mesa"
+                      value={categoryForm.slug}
+                      onChange={(e) =>
+                        setCategoryForm({ ...categoryForm, slug: normalizeSlug(e.target.value) })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Prefijo SKU</label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 uppercase"
+                      placeholder="Ej: LMS"
+                      value={categoryForm.sku_prefix}
+                      onChange={(e) =>
+                        setCategoryForm({ ...categoryForm, sku_prefix: normalizeSkuPrefix(e.target.value) })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Descripción</label>
+                    <textarea
+                      className="min-h-[100px] w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Descripción opcional de la categoría"
+                      value={categoryForm.description}
+                      onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Orden</label>
+                    <input
+                      type="number"
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="0"
+                      value={categoryForm.sort_order}
+                      onChange={(e) =>
+                        setCategoryForm({ ...categoryForm, sort_order: Number(e.target.value || 0) })
+                      }
+                    />
+                  </div>
+
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -398,71 +680,86 @@ export default function AdminPage() {
                     />
                     Activa
                   </label>
-                  <div className="flex gap-3">
+
+                  <div className="flex flex-wrap gap-3">
                     <button
                       disabled={saving}
                       className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white"
                     >
-                      {editingCategoryId ? 'Actualizar' : 'Crear'}
+                      {editingCategoryId ? 'Guardar cambios' : 'Crear categoría'}
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={resetCategoryForm}
+                      className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                    >
+                      Limpiar
+                    </button>
+
                     {editingCategoryId ? (
                       <button
                         type="button"
-                        onClick={resetCategoryForm}
-                        className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                        onClick={() => deleteCategory(selectedCategory)}
+                        className="rounded-full border border-[#efc0b8] px-5 py-3 text-sm font-semibold text-[#b34f42]"
                       >
-                        Cancelar
+                        Dar de baja
                       </button>
                     ) : null}
                   </div>
                 </form>
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-[#5e89a6]">
-                        <th className="pb-3">Nombre</th>
-                        <th className="pb-3">Slug</th>
-                        <th className="pb-3">Orden</th>
-                        <th className="pb-3">Estado</th>
-                        <th className="pb-3">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {categories.map((category) => (
-                        <tr key={category.id} className="border-t border-[#efe6d5]">
-                          <td className="py-3 font-semibold">{category.name}</td>
-                          <td className="py-3">{category.slug}</td>
-                          <td className="py-3">{category.sort_order}</td>
-                          <td className="py-3">{category.active ? 'Activa' : 'Inactiva'}</td>
-                          <td className="py-3">
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => {
-                                  setEditingCategoryId(category.id)
-                                  setCategoryForm({
-                                    ...category,
-                                    description: category.description || '',
-                                  })
-                                }}
-                                className="rounded-full border border-[#d8cdb8] px-3 py-1"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                onClick={() =>
-                                  deleteRow(`/api/admin/categories/${category.id}`, 'la categoría')
-                                }
-                                className="rounded-full border border-[#efc0b8] px-3 py-1 text-[#b34f42]"
-                              >
-                                Eliminar
-                              </button>
+                <div className="space-y-3">
+                  {categories.length === 0 ? (
+                    <div className="rounded-3xl border border-[#efe6d5] bg-white p-6 text-center text-[#6d7e8b]">
+                      No hay categorías activas para administrar.
+                    </div>
+                  ) : (
+                    categories.map((category) => {
+                      const isSelected = editingCategoryId === category.id
+
+                      return (
+                        <button
+                          key={category.id}
+                          type="button"
+                          onClick={() => selectCategory(category)}
+                          className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
+                              ? 'border-[#143047] bg-[#eef4f8]'
+                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                            }`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-[#143047]">{category.name}</p>
+                              <p className="mt-1 text-sm text-[#4e6475]">{category.slug}</p>
+                              {category.sku_prefix ? (
+                                <p className="mt-1 text-xs text-[#6d7e8b]">SKU: {category.sku_prefix}</p>
+                              ) : null}
+                              {category.description ? (
+                                <p className="mt-2 text-xs leading-5 text-[#6d7e8b]">
+                                  {category.description}
+                                </p>
+                              ) : null}
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+
+                            <div className="flex flex-col items-end gap-2">
+                              <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-xs font-semibold text-[#143047]">
+                                Orden {category.sort_order}
+                              </span>
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-semibold ${category.active
+                                    ? 'bg-[#ecf8f4] text-[#0f6d5f]'
+                                    : 'bg-[#fff1ef] text-[#b34f42]'
+                                  }`}
+                              >
+                                {category.active ? 'Activa' : 'Inactiva'}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })
+                  )}
                 </div>
               </div>
             </SectionCard>
@@ -471,14 +768,29 @@ export default function AdminPage() {
           {activeTab === 'products' && (
             <SectionCard
               title="ABM de productos"
-              subtitle="El SKU se genera automáticamente. Seleccioná un producto para editarlo."
+              subtitle="El SKU se genera automáticamente. Seleccioná un producto para editarlo desde el formulario."
             >
               <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-
-                {/* FORMULARIO */}
                 <form onSubmit={submitProduct} className="space-y-4 rounded-3xl bg-[#f8f3ea] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-[#143047]">
+                        {editingProductId ? 'Editar producto' : 'Nuevo producto'}
+                      </h3>
+                      <p className="text-xs text-[#6d7e8b]">
+                        {editingProductId
+                          ? 'Estás editando el producto seleccionado.'
+                          : 'Completá los datos para crear un producto.'}
+                      </p>
+                    </div>
 
-                  {/* CATEGORIA */}
+                    {editingProductId ? (
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#143047]">
+                        Seleccionado
+                      </span>
+                    ) : null}
+                  </div>
+
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-[#143047]">Categoría</label>
                     <select
@@ -489,48 +801,52 @@ export default function AdminPage() {
                       }
                     >
                       <option value="">Sin categoría</option>
-                      {categoryOptions.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.label} {c.sku_prefix ? `· ${c.sku_prefix}` : ''}
+                      {categoryOptions.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.label}{category.sku_prefix ? ` · ${category.sku_prefix}` : ''}
                         </option>
                       ))}
                     </select>
-
                     <p className="mt-1 text-xs text-[#6d7e8b]">
-                      {categoryOptions.find(c => c.id === productForm.category_id)?.sku_prefix
-                        ? `Se usará el prefijo ${categoryOptions.find(c => c.id === productForm.category_id)?.sku_prefix}`
-                        : 'Se usará el prefijo general PRD'}
+                      {selectedProductCategory?.sku_prefix
+                        ? `El SKU nuevo usará el prefijo ${selectedProductCategory.sku_prefix}.`
+                        : 'Si no tiene categoría, se usará el prefijo general PRD.'}
                     </p>
                   </div>
 
-                  {/* NOMBRE */}
-                  <input
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Nombre"
-                    value={productForm.name}
-                    onChange={(e) =>
-                      setProductForm((prev) => {
-                        const next = e.target.value
-                        return {
-                          ...prev,
-                          name: next,
-                          slug: !prev.slug ? normalizeSlug(next) : prev.slug,
-                        }
-                      })
-                    }
-                  />
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Nombre</label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Nombre"
+                      value={productForm.name}
+                      onChange={(e) =>
+                        setProductForm((prev) => {
+                          const nextName = e.target.value
+                          const shouldAutofillSlug =
+                            !prev.slug || prev.slug === normalizeSlug(prev.name || '')
+                          return {
+                            ...prev,
+                            name: nextName,
+                            slug: shouldAutofillSlug ? normalizeSlug(nextName) : prev.slug,
+                          }
+                        })
+                      }
+                    />
+                  </div>
 
-                  {/* SLUG */}
-                  <input
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Slug"
-                    value={productForm.slug}
-                    onChange={(e) =>
-                      setProductForm({ ...productForm, slug: normalizeSlug(e.target.value) })
-                    }
-                  />
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Slug</label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Slug"
+                      value={productForm.slug}
+                      onChange={(e) =>
+                        setProductForm({ ...productForm, slug: normalizeSlug(e.target.value) })
+                      }
+                    />
+                  </div>
 
-                  {/* SKU SOLO LECTURA */}
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-[#143047]">SKU</label>
                     <input
@@ -542,138 +858,183 @@ export default function AdminPage() {
                       }
                       readOnly
                     />
+                    <p className="mt-1 text-xs text-[#6d7e8b]">
+                      El SKU se asigna automáticamente según la categoría.
+                    </p>
                   </div>
 
-                  {/* DESCRIPCION */}
-                  <input
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Descripción corta"
-                    value={productForm.short_description}
-                    onChange={(e) =>
-                      setProductForm({ ...productForm, short_description: e.target.value })
-                    }
-                  />
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Descripción corta</label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Descripción corta"
+                      value={productForm.short_description}
+                      onChange={(e) =>
+                        setProductForm({ ...productForm, short_description: e.target.value })
+                      }
+                    />
+                  </div>
 
-                  <textarea
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 min-h-[100px]"
-                    placeholder="Descripción completa"
-                    value={productForm.description}
-                    onChange={(e) =>
-                      setProductForm({ ...productForm, description: e.target.value })
-                    }
-                  />
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Descripción completa</label>
+                    <textarea
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 min-h-[100px]"
+                      placeholder="Descripción completa"
+                      value={productForm.description}
+                      onChange={(e) =>
+                        setProductForm({ ...productForm, description: e.target.value })
+                      }
+                    />
+                  </div>
 
-                  {/* PRECIOS */}
                   <div className="grid gap-3 sm:grid-cols-2">
-
-                    <div className="flex items-center border rounded-2xl border-[#d8cdb8] bg-white">
-                      <span className="px-3 text-[#6d7e8b]">$</span>
-                      <input
-                        type="number"
-                        className="w-full px-3 py-3 outline-none"
-                        placeholder="Precio"
-                        value={productForm.price}
-                        onChange={(e) =>
-                          setProductForm({ ...productForm, price: Number(e.target.value) })
-                        }
-                      />
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-[#143047]">Precio</label>
+                      <div className="flex items-center border rounded-2xl border-[#d8cdb8] bg-white">
+                        <span className="px-3 text-[#6d7e8b]">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="w-full px-3 py-3 outline-none"
+                          placeholder="Precio"
+                          value={productForm.price}
+                          onChange={(e) =>
+                            setProductForm({ ...productForm, price: toSafeNumber(e.target.value, 0) })
+                          }
+                        />
+                      </div>
                     </div>
 
-                    <div className="flex items-center border rounded-2xl border-[#d8cdb8] bg-white">
-                      <span className="px-3 text-[#6d7e8b]">$</span>
-                      <input
-                        type="number"
-                        className="w-full px-3 py-3 outline-none"
-                        placeholder="Precio tachado"
-                        value={productForm.compare_at_price}
-                        onChange={(e) =>
-                          setProductForm({ ...productForm, compare_at_price: e.target.value })
-                        }
-                      />
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-[#143047]">Precio tachado</label>
+                      <div className="flex items-center border rounded-2xl border-[#d8cdb8] bg-white">
+                        <span className="px-3 text-[#6d7e8b]">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="w-full px-3 py-3 outline-none"
+                          placeholder="Precio tachado"
+                          value={productForm.compare_at_price}
+                          onChange={(e) =>
+                            setProductForm({ ...productForm, compare_at_price: e.target.value })
+                          }
+                        />
+                      </div>
                     </div>
-
                   </div>
 
-                  {/* STOCK */}
-                  <input
-                    type="number"
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Stock"
-                    value={productForm.stock}
-                    onChange={(e) =>
-                      setProductForm({ ...productForm, stock: Number(e.target.value) })
-                    }
-                  />
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Stock</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Stock"
+                      value={productForm.stock}
+                      onChange={(e) =>
+                        setProductForm({ ...productForm, stock: Math.max(0, toSafeInteger(e.target.value, 0)) })
+                      }
+                    />
+                  </div>
 
-                  {/* FLAGS */}
                   <div className="flex gap-4">
-                    <label>
+                    <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={productForm.featured}
                         onChange={(e) =>
                           setProductForm({ ...productForm, featured: e.target.checked })
                         }
-                      /> Destacado
+                      />
+                      Destacado
                     </label>
 
-                    <label>
+                    <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={productForm.active}
                         onChange={(e) =>
                           setProductForm({ ...productForm, active: e.target.checked })
                         }
-                      /> Activo
+                      />
+                      Activo
                     </label>
                   </div>
 
-                  {/* BOTONES */}
-                  <div className="flex gap-3">
-                    <button className="bg-[#143047] text-white px-4 py-2 rounded-full">
-                      {editingProductId ? 'Actualizar' : 'Crear'}
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white"
+                    >
+                      {editingProductId ? 'Guardar cambios' : 'Crear producto'}
                     </button>
 
-                    <button type="button" onClick={resetProductForm}>
+                    <button
+                      type="button"
+                      onClick={resetProductForm}
+                      className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                    >
                       Limpiar
                     </button>
 
-                    {editingProductId && (
+                    {editingProductId ? (
                       <button
                         type="button"
-                        onClick={() => deleteProduct()}
-                        className="text-red-500"
+                        onClick={() => deleteProduct(selectedProduct)}
+                        className="rounded-full border border-[#efc0b8] px-5 py-3 text-sm font-semibold text-[#b34f42]"
                       >
-                        Baja lógica
+                        Dar de baja
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </form>
 
-                {/* LISTA */}
                 <div className="space-y-3">
-                  {products.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => selectProduct(p)}
-                      className="w-full border p-4 rounded-xl text-left hover:bg-[#faf7f0]"
-                    >
-                      <div className="flex justify-between">
-                        <div>
-                          <b>{p.name}</b>
-                          <div className="text-xs">{p.slug}</div>
-                          <div className="text-xs mt-1">SKU: {p.sku}</div>
-                        </div>
+                  {products.length === 0 ? (
+                    <div className="rounded-3xl border border-[#efe6d5] bg-white p-6 text-center text-[#6d7e8b]">
+                      No hay productos activos para administrar.
+                    </div>
+                  ) : (
+                    products.map((p) => {
+                      const isSelected = editingProductId === p.id
 
-                        <div className="text-right">
-                          <div>$ {p.price}</div>
-                          <div>Stock {p.stock}</div>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => selectProduct(p)}
+                          className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
+                              ? 'border-[#143047] bg-[#eef4f8]'
+                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                            }`}
+                        >
+                          <div className="flex justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-[#143047]">{p.name}</p>
+                              <p className="text-sm text-[#4e6475]">{p.slug}</p>
+                              {p.sku ? (
+                                <p className="mt-1 text-xs text-[#6d7e8b]">SKU: {p.sku}</p>
+                              ) : null}
+                              {p.categories?.name ? (
+                                <p className="mt-1 text-xs text-[#6d7e8b]">Categoría: {p.categories.name}</p>
+                              ) : (
+                                <p className="mt-1 text-xs text-[#6d7e8b]">Sin categoría</p>
+                              )}
+                            </div>
+
+                            <div className="text-right">
+                              <p className="font-semibold text-[#143047]">$ {Number(p.price || 0).toLocaleString('es-AR')}</p>
+                              <p className="text-xs text-[#6d7e8b]">Stock {p.stock}</p>
+                              <p className="text-xs text-[#6d7e8b]">{p.active ? 'Activo' : 'Inactivo'}</p>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })
+                  )}
                 </div>
-
               </div>
             </SectionCard>
           )}
@@ -814,8 +1175,8 @@ export default function AdminPage() {
                               key={status}
                               onClick={() => updateOrder(order.id, status)}
                               className={`rounded-full px-3 py-1 text-xs font-semibold ${order.status === status
-                                ? 'bg-[#143047] text-white'
-                                : 'border border-[#d8cdb8]'
+                                  ? 'bg-[#143047] text-white'
+                                  : 'border border-[#d8cdb8]'
                                 }`}
                             >
                               {status}
