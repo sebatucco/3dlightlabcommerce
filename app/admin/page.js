@@ -2,9 +2,24 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { BarChart3, FolderTree, Image as ImageIcon, LogOut, Mail, Package, ShoppingCart } from 'lucide-react'
+import {
+  BarChart3,
+  FolderTree,
+  Image as ImageIcon,
+  LogOut,
+  Mail,
+  Package,
+  ShoppingCart,
+} from 'lucide-react'
 
-const initialCategory = { name: '', slug: '', description: '', sort_order: 0, active: true }
+const initialCategory = {
+  name: '',
+  slug: '',
+  description: '',
+  sort_order: 0,
+  active: true,
+}
+
 const initialProduct = {
   category_id: '',
   name: '',
@@ -18,7 +33,13 @@ const initialProduct = {
   featured: false,
   active: true,
 }
-const initialImage = { product_id: '', image_url: '', alt_text: '', sort_order: 0 }
+
+const initialImage = {
+  product_id: '',
+  image_url: '',
+  alt_text: '',
+  sort_order: 0,
+}
 
 function SectionCard({ title, subtitle, children, action }) {
   return (
@@ -32,6 +53,22 @@ function SectionCard({ title, subtitle, children, action }) {
       </div>
       {children}
     </section>
+  )
+}
+
+function normalizeSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+function isValidUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || '').trim()
   )
 }
 
@@ -66,7 +103,7 @@ export default function AdminPage() {
     setMessage(text)
     if (typeof window !== 'undefined') {
       window.clearTimeout(window.__adminFlashTimer)
-      window.__adminFlashTimer = window.setTimeout(() => setMessage(''), 2600)
+      window.__adminFlashTimer = window.setTimeout(() => setMessage(''), 2800)
     }
   }
 
@@ -97,15 +134,16 @@ export default function AdminPage() {
     try {
       setLoading(true)
 
-      const [sessionRes, statsRes, categoriesRes, productsRes, imagesRes, ordersRes, contactsRes] = await Promise.all([
-        fetch('/api/admin/session', { cache: 'no-store' }),
-        fetch('/api/admin/stats', { cache: 'no-store' }),
-        fetch('/api/admin/categories', { cache: 'no-store' }),
-        fetch('/api/admin/products', { cache: 'no-store' }),
-        fetch('/api/admin/product-images', { cache: 'no-store' }),
-        fetch('/api/admin/orders', { cache: 'no-store' }),
-        fetch('/api/admin/contacts', { cache: 'no-store' }),
-      ])
+      const [sessionRes, statsRes, categoriesRes, productsRes, imagesRes, ordersRes, contactsRes] =
+        await Promise.all([
+          fetch('/api/admin/session', { cache: 'no-store' }),
+          fetch('/api/admin/stats', { cache: 'no-store' }),
+          fetch('/api/admin/categories', { cache: 'no-store' }),
+          fetch('/api/admin/products', { cache: 'no-store' }),
+          fetch('/api/admin/product-images', { cache: 'no-store' }),
+          fetch('/api/admin/orders', { cache: 'no-store' }),
+          fetch('/api/admin/contacts', { cache: 'no-store' }),
+        ])
 
       if (await handleUnauthorized(sessionRes)) return
 
@@ -130,27 +168,63 @@ export default function AdminPage() {
     }
   }
 
+  function validateCategoryForm() {
+    const name = String(categoryForm.name || '').trim()
+    const slug = normalizeSlug(categoryForm.slug || categoryForm.name || '')
+
+    if (!name) {
+      flash('La categoría necesita nombre')
+      return null
+    }
+
+    if (!slug) {
+      flash('La categoría necesita slug válido')
+      return null
+    }
+
+    return {
+      name,
+      slug,
+      description: String(categoryForm.description || '').trim(),
+      sort_order: Number.isFinite(Number(categoryForm.sort_order))
+        ? Number(categoryForm.sort_order)
+        : 0,
+      active: categoryForm.active !== false,
+    }
+  }
+
   async function submitCategory(event) {
     event.preventDefault()
+    if (saving) return
+
+    const payload = validateCategoryForm()
+    if (!payload) return
+
     setSaving(true)
 
     try {
-      const endpoint = editingCategoryId ? `/api/admin/categories/${editingCategoryId}` : '/api/admin/categories'
+      const endpoint = editingCategoryId
+        ? `/api/admin/categories/${editingCategoryId}`
+        : '/api/admin/categories'
       const method = editingCategoryId ? 'PUT' : 'POST'
 
       const response = await fetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(categoryForm),
+        body: JSON.stringify(payload),
       })
 
       if (await handleUnauthorized(response)) return
 
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) return flash(data.error || 'No se pudo guardar la categoría')
+
+      if (!response.ok) {
+        flash(data.error || 'No se pudo guardar la categoría')
+        return
+      }
 
       resetCategoryForm()
-      flash('Categoría guardada')
+      flash(editingCategoryId ? 'Categoría actualizada' : 'Categoría creada')
       await loadAll()
     } catch {
       flash('No se pudo guardar la categoría')
@@ -214,6 +288,42 @@ export default function AdminPage() {
       flash('No se pudo guardar la imagen')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function deleteCategory(category) {
+    const id = String(category?.id || '').trim()
+
+    if (!isValidUuid(id)) {
+      flash('La categoría no tiene un id válido')
+      return
+    }
+
+    const confirmText = `¿Dar de baja la categoría "${category?.name || 'sin nombre'}"?`
+    if (!window.confirm(confirmText)) return
+
+    try {
+      const response = await fetch(`/api/admin/categories/${id}`, {
+        method: 'DELETE',
+      })
+
+      if (await handleUnauthorized(response)) return
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        flash(data.error || 'No se pudo eliminar la categoría')
+        return
+      }
+
+      if (editingCategoryId === id) {
+        resetCategoryForm()
+      }
+
+      flash('Categoría dada de baja')
+      await loadAll()
+    } catch {
+      flash('No se pudo eliminar la categoría')
     }
   }
 
@@ -290,8 +400,12 @@ export default function AdminPage() {
     <main className="min-h-screen bg-[#f5efe3] text-[#143047]">
       <div className="mx-auto grid min-h-screen max-w-[1500px] gap-6 px-4 py-6 lg:grid-cols-[260px_1fr]">
         <aside className="rounded-[28px] border border-[#d8cdb8] bg-white p-6 shadow-[0_14px_35px_rgba(20,48,71,0.06)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#5e89a6]">Panel interno</p>
-          <h1 className="mt-3 font-display text-5xl uppercase leading-none">3DLightLab Commerce</h1>
+          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#5e89a6]">
+            Panel interno
+          </p>
+          <h1 className="mt-3 font-display text-5xl uppercase leading-none">
+            3DLightLab Commerce
+          </h1>
           <p className="mt-3 text-sm text-[#4e6475]">{session?.email || 'Administrador'}</p>
 
           <div className="mt-8 space-y-2">
@@ -300,8 +414,8 @@ export default function AdminPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${activeTab === tab.id
-                  ? 'bg-[#143047] text-white'
-                  : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
+                    ? 'bg-[#143047] text-white'
+                    : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
                   }`}
               >
                 <tab.icon className="h-4 w-4" />
@@ -359,59 +473,102 @@ export default function AdminPage() {
           {activeTab === 'categories' && (
             <SectionCard
               title="ABM de categorías"
-              subtitle="Creá, editá y desactivá categorías para el catálogo."
+              subtitle="Creá, editá y dales de baja lógica sin romper productos asociados."
             >
               <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
                 <form onSubmit={submitCategory} className="space-y-4 rounded-3xl bg-[#f8f3ea] p-5">
-                  <input
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Nombre"
-                    value={categoryForm.name}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                  />
-                  <input
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Slug"
-                    value={categoryForm.slug}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, slug: e.target.value })}
-                  />
-                  <textarea
-                    className="min-h-[100px] w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Descripción"
-                    value={categoryForm.description}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
-                  />
-                  <input
-                    type="number"
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Orden"
-                    value={categoryForm.sort_order}
-                    onChange={(e) =>
-                      setCategoryForm({ ...categoryForm, sort_order: Number(e.target.value) })
-                    }
-                  />
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Nombre</label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Ej: Lámparas de mesa"
+                      value={categoryForm.name}
+                      onChange={(e) =>
+                        setCategoryForm((prev) => {
+                          const nextName = e.target.value
+                          const shouldAutofillSlug =
+                            !prev.slug || prev.slug === normalizeSlug(prev.name || '')
+                          return {
+                            ...prev,
+                            name: nextName,
+                            slug: shouldAutofillSlug ? normalizeSlug(nextName) : prev.slug,
+                          }
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Slug</label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Ej: lamparas-de-mesa"
+                      value={categoryForm.slug}
+                      onChange={(e) =>
+                        setCategoryForm({ ...categoryForm, slug: normalizeSlug(e.target.value) })
+                      }
+                    />
+                    <p className="mt-1 text-xs text-[#6d7e8b]">
+                      Se usa para URLs y filtros. Solo letras, números y guiones.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">
+                      Descripción
+                    </label>
+                    <textarea
+                      className="min-h-[100px] w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Descripción opcional de la categoría"
+                      value={categoryForm.description}
+                      onChange={(e) =>
+                        setCategoryForm({ ...categoryForm, description: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Orden</label>
+                    <input
+                      type="number"
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="0"
+                      value={categoryForm.sort_order}
+                      onChange={(e) =>
+                        setCategoryForm({
+                          ...categoryForm,
+                          sort_order: Number(e.target.value || 0),
+                        })
+                      }
+                    />
+                  </div>
+
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
                       checked={categoryForm.active}
-                      onChange={(e) => setCategoryForm({ ...categoryForm, active: e.target.checked })}
+                      onChange={(e) =>
+                        setCategoryForm({ ...categoryForm, active: e.target.checked })
+                      }
                     />
                     Activa
                   </label>
+
                   <div className="flex gap-3">
                     <button
                       disabled={saving}
-                      className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white"
+                      className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
                     >
                       {editingCategoryId ? 'Actualizar' : 'Crear'}
                     </button>
-                    {editingCategoryId ? (
+
+                    {(editingCategoryId || categoryForm.name || categoryForm.slug || categoryForm.description) ? (
                       <button
                         type="button"
                         onClick={resetCategoryForm}
                         className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
                       >
-                        Cancelar
+                        Limpiar
                       </button>
                     ) : null}
                   </div>
@@ -429,38 +586,59 @@ export default function AdminPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {categories.map((category) => (
-                        <tr key={category.id} className="border-t border-[#efe6d5]">
-                          <td className="py-3 font-semibold">{category.name}</td>
-                          <td className="py-3">{category.slug}</td>
-                          <td className="py-3">{category.sort_order}</td>
-                          <td className="py-3">{category.active ? 'Activa' : 'Inactiva'}</td>
-                          <td className="py-3">
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => {
-                                  setEditingCategoryId(category.id)
-                                  setCategoryForm({
-                                    ...category,
-                                    description: category.description || '',
-                                  })
-                                }}
-                                className="rounded-full border border-[#d8cdb8] px-3 py-1"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                onClick={() =>
-                                  deleteRow(`/api/admin/categories/${category.id}`, 'la categoría')
-                                }
-                                className="rounded-full border border-[#efc0b8] px-3 py-1 text-[#b34f42]"
-                              >
-                                Eliminar
-                              </button>
-                            </div>
+                      {categories.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-6 text-center text-[#6d7e8b]">
+                            No hay categorías activas para administrar.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        categories.map((category) => (
+                          <tr key={category.id} className="border-t border-[#efe6d5] align-top">
+                            <td className="py-3">
+                              <p className="font-semibold">{category.name}</p>
+                              {category.description ? (
+                                <p className="mt-1 max-w-[320px] text-xs text-[#6d7e8b]">
+                                  {category.description}
+                                </p>
+                              ) : null}
+                            </td>
+                            <td className="py-3">{category.slug}</td>
+                            <td className="py-3">{category.sort_order}</td>
+                            <td className="py-3">
+                              {category.active ? 'Activa' : 'Inactiva'}
+                            </td>
+                            <td className="py-3">
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCategoryId(category.id)
+                                    setCategoryForm({
+                                      name: category.name || '',
+                                      slug: category.slug || '',
+                                      description: category.description || '',
+                                      sort_order: Number(category.sort_order || 0),
+                                      active: Boolean(category.active),
+                                    })
+                                  }}
+                                  className="rounded-full border border-[#d8cdb8] px-3 py-1"
+                                >
+                                  Editar
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => deleteCategory(category)}
+                                  className="rounded-full border border-[#efc0b8] px-3 py-1 text-[#b34f42]"
+                                >
+                                  Dar de baja
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -550,9 +728,7 @@ export default function AdminPage() {
                       <input
                         type="checkbox"
                         checked={productForm.featured}
-                        onChange={(e) =>
-                          setProductForm({ ...productForm, featured: e.target.checked })
-                        }
+                        onChange={(e) => setProductForm({ ...productForm, featured: e.target.checked })}
                       />
                       Destacado
                     </label>
@@ -785,8 +961,8 @@ export default function AdminPage() {
                               key={status}
                               onClick={() => updateOrder(order.id, status)}
                               className={`rounded-full px-3 py-1 text-xs font-semibold ${order.status === status
-                                ? 'bg-[#143047] text-white'
-                                : 'border border-[#d8cdb8]'
+                                  ? 'bg-[#143047] text-white'
+                                  : 'border border-[#d8cdb8]'
                                 }`}
                             >
                               {status}

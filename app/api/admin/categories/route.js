@@ -4,17 +4,58 @@ import { createAdminSupabaseClient } from '@/lib/admin-supabase'
 
 export const dynamic = 'force-dynamic'
 
+function normalizeSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+function buildPayload(body) {
+  const name = String(body?.name || '').trim()
+  const slug = normalizeSlug(body?.slug || body?.name || '')
+  const description = body?.description ? String(body.description).trim() : null
+  const sort_order = Number.isFinite(Number(body?.sort_order)) ? Number(body.sort_order) : 0
+  const active = body?.active !== false
+
+  return {
+    name,
+    slug,
+    description,
+    sort_order,
+    active,
+  }
+}
+
 export async function GET(request) {
   const auth = await requireAdmin(request)
   if (!auth.authorized) return auth.response
 
   try {
     const supabase = createAdminSupabaseClient()
-    const { data, error } = await supabase.from('categories').select('*').order('sort_order').order('name')
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data || [], { headers: { 'Cache-Control': 'no-store, max-age=0' } })
+
+    const { data, error } = await supabase
+      .from('categories')
+      .select('*')
+      .is('deleted_at', null)
+      .order('sort_order')
+      .order('name')
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json(data || [], {
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
+    })
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(
+      { error: error?.message || 'No se pudieron obtener las categorías' },
+      { status: 500 }
+    )
   }
 }
 
@@ -23,24 +64,54 @@ export async function POST(request) {
   if (!auth.authorized) return auth.response
 
   const body = await request.json().catch(() => ({}))
-  const payload = {
-    name: String(body.name || '').trim(),
-    slug: String(body.slug || '').trim(),
-    description: body.description ? String(body.description) : null,
-    sort_order: Number(body.sort_order ?? 0),
-    active: body.active !== false,
-  }
+  const payload = buildPayload(body)
 
   if (!payload.name || !payload.slug) {
-    return NextResponse.json({ error: 'Nombre y slug son obligatorios' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Nombre y slug son obligatorios' },
+      { status: 400 }
+    )
   }
 
   try {
     const supabase = createAdminSupabaseClient()
-    const { data, error } = await supabase.from('categories').insert(payload).select('*').single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    const { data: existing, error: existingError } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('slug', payload.slug)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 })
+    }
+
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Ya existe una categoría con ese slug' },
+        { status: 400 }
+      )
+    }
+
+    const { data, error } = await supabase
+      .from('categories')
+      .insert({
+        ...payload,
+        deleted_at: null,
+      })
+      .select('*')
+      .single()
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
     return NextResponse.json(data)
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(
+      { error: error?.message || 'No se pudo crear la categoría' },
+      { status: 500 }
+    )
   }
 }
