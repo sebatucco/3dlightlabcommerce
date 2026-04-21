@@ -81,6 +81,16 @@ function isValidUuid(value) {
   )
 }
 
+function toSafeNumber(value, fallback = 0) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
+
+function toSafeInteger(value, fallback = 0) {
+  const num = Number(value)
+  return Number.isInteger(num) ? num : fallback
+}
+
 export default function AdminPage() {
   const router = useRouter()
 
@@ -136,6 +146,24 @@ export default function AdminPage() {
   function resetProductForm() {
     setProductForm(initialProduct)
     setEditingProductId(null)
+  }
+
+  function selectProduct(product) {
+    setEditingProductId(product.id)
+    setProductForm({
+      category_id: product.category_id || '',
+      name: product.name || '',
+      slug: product.slug || '',
+      short_description: product.short_description || '',
+      description: product.description || '',
+      price: Number(product.price || 0),
+      compare_at_price:
+        product.compare_at_price == null ? '' : Number(product.compare_at_price),
+      sku: product.sku || '',
+      stock: Number(product.stock || 0),
+      featured: Boolean(product.featured),
+      active: Boolean(product.active),
+    })
   }
 
   function resetImageForm() {
@@ -213,6 +241,53 @@ export default function AdminPage() {
         : 0,
       active: categoryForm.active !== false,
       sku_prefix: sku_prefix || null,
+    }
+  }
+
+  function validateProductForm() {
+    const name = String(productForm.name || '').trim()
+    const slug = normalizeSlug(productForm.slug || productForm.name || '')
+    const short_description = String(productForm.short_description || '').trim()
+    const description = String(productForm.description || '').trim()
+    const price = toSafeNumber(productForm.price, 0)
+    const compare_at_price =
+      productForm.compare_at_price === '' || productForm.compare_at_price == null
+        ? ''
+        : toSafeNumber(productForm.compare_at_price, 0)
+    const stock = Math.max(0, toSafeInteger(productForm.stock, 0))
+    const category_id = String(productForm.category_id || '').trim() || null
+
+    if (!name) {
+      flash('El producto necesita nombre')
+      return null
+    }
+
+    if (!slug) {
+      flash('El producto necesita slug válido')
+      return null
+    }
+
+    if (price < 0) {
+      flash('El precio no puede ser negativo')
+      return null
+    }
+
+    if (compare_at_price !== '' && Number(compare_at_price) < 0) {
+      flash('El precio tachado no puede ser negativo')
+      return null
+    }
+
+    return {
+      category_id,
+      name,
+      slug,
+      short_description,
+      description,
+      price,
+      compare_at_price,
+      stock,
+      featured: Boolean(productForm.featured),
+      active: productForm.active !== false,
     }
   }
 
@@ -295,6 +370,11 @@ export default function AdminPage() {
 
   async function submitProduct(event) {
     event.preventDefault()
+    if (saving) return
+
+    const payload = validateProductForm()
+    if (!payload) return
+
     setSaving(true)
 
     try {
@@ -306,21 +386,62 @@ export default function AdminPage() {
       const response = await fetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(productForm),
+        body: JSON.stringify(payload),
       })
 
       if (await handleUnauthorized(response)) return
 
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) return flash(data.error || 'No se pudo guardar el producto')
+
+      if (!response.ok) {
+        flash(data.error || 'No se pudo guardar el producto')
+        return
+      }
 
       resetProductForm()
-      flash('Producto guardado')
+      flash(editingProductId ? 'Producto actualizado' : 'Producto creado')
       await loadAll()
     } catch {
       flash('No se pudo guardar el producto')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function deleteProduct(product) {
+    const id = String(product?.id || editingProductId || '').trim()
+
+    if (!isValidUuid(id)) {
+      flash('El producto no tiene un id válido')
+      return
+    }
+
+    const productName = product?.name || productForm.name || 'sin nombre'
+    const confirmText = `¿Dar de baja el producto "${productName}"?`
+    if (!window.confirm(confirmText)) return
+
+    try {
+      const response = await fetch(`/api/admin/products/${id}`, {
+        method: 'DELETE',
+      })
+
+      if (await handleUnauthorized(response)) return
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        flash(data.error || 'No se pudo eliminar el producto')
+        return
+      }
+
+      if (editingProductId === id) {
+        resetProductForm()
+      }
+
+      flash('Producto dado de baja')
+      await loadAll()
+    } catch {
+      flash('No se pudo eliminar el producto')
     }
   }
 
@@ -411,7 +532,7 @@ export default function AdminPage() {
   ]
 
   const categoryOptions = useMemo(
-    () => categories.map((item) => ({ id: item.id, label: item.name })),
+    () => categories.map((item) => ({ id: item.id, label: item.name, sku_prefix: item.sku_prefix || null })),
     [categories]
   )
 
@@ -423,6 +544,16 @@ export default function AdminPage() {
   const selectedCategory = useMemo(
     () => categories.find((item) => item.id === editingCategoryId) || null,
     [categories, editingCategoryId]
+  )
+
+  const selectedProduct = useMemo(
+    () => products.find((item) => item.id === editingProductId) || null,
+    [products, editingProductId]
+  )
+
+  const selectedProductCategory = useMemo(
+    () => categoryOptions.find((item) => item.id === productForm.category_id) || null,
+    [categoryOptions, productForm.category_id]
   )
 
   if (loading) {
@@ -718,86 +849,199 @@ export default function AdminPage() {
           {activeTab === 'products' && (
             <SectionCard
               title="ABM de productos"
-              subtitle="Administrá precios, stock, categoría y visibilidad del catálogo."
+              subtitle="El SKU se genera automáticamente. Seleccioná un producto para editarlo desde el formulario."
             >
               <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
                 <form onSubmit={submitProduct} className="space-y-4 rounded-3xl bg-[#f8f3ea] p-5">
-                  <select
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    value={productForm.category_id}
-                    onChange={(e) => setProductForm({ ...productForm, category_id: e.target.value })}
-                  >
-                    <option value="">Sin categoría</option>
-                    {categoryOptions.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-[#143047]">
+                        {editingProductId ? 'Editar producto' : 'Nuevo producto'}
+                      </h3>
+                      <p className="text-xs text-[#6d7e8b]">
+                        {editingProductId
+                          ? 'Estás editando el producto seleccionado.'
+                          : 'Completá los datos para crear un producto.'}
+                      </p>
+                    </div>
 
-                  <input
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Nombre"
-                    value={productForm.name}
-                    onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                  />
-                  <input
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Slug"
-                    value={productForm.slug}
-                    onChange={(e) => setProductForm({ ...productForm, slug: e.target.value })}
-                  />
-                  <input
-                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Descripción corta"
-                    value={productForm.short_description}
-                    onChange={(e) =>
-                      setProductForm({ ...productForm, short_description: e.target.value })
-                    }
-                  />
-                  <textarea
-                    className="min-h-[110px] w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                    placeholder="Descripción completa"
-                    value={productForm.description}
-                    onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
-                  />
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <input
-                      type="number"
+                    {editingProductId ? (
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#143047]">
+                        Seleccionado
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Categoría</label>
+                    <select
                       className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                      placeholder="Precio"
-                      value={productForm.price}
-                      onChange={(e) => setProductForm({ ...productForm, price: Number(e.target.value) })}
-                    />
-                    <input
-                      type="number"
-                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                      placeholder="Precio tachado"
-                      value={productForm.compare_at_price}
+                      value={productForm.category_id}
                       onChange={(e) =>
-                        setProductForm({ ...productForm, compare_at_price: e.target.value })
+                        setProductForm({ ...productForm, category_id: e.target.value })
+                      }
+                    >
+                      <option value="">Sin categoría</option>
+                      {categoryOptions.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.label}
+                          {category.sku_prefix ? ` · ${category.sku_prefix}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-[#6d7e8b]">
+                      {selectedProductCategory?.sku_prefix
+                        ? `El SKU nuevo usará el prefijo ${selectedProductCategory.sku_prefix}.`
+                        : 'Si no tiene categoría, se usará el prefijo general PRD.'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Nombre</label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Nombre del producto"
+                      value={productForm.name}
+                      onChange={(e) =>
+                        setProductForm((prev) => {
+                          const nextName = e.target.value
+                          const shouldAutofillSlug =
+                            !prev.slug || prev.slug === normalizeSlug(prev.name || '')
+                          return {
+                            ...prev,
+                            name: nextName,
+                            slug: shouldAutofillSlug ? normalizeSlug(nextName) : prev.slug,
+                          }
+                        })
                       }
                     />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Slug</label>
                     <input
                       className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                      placeholder="SKU"
-                      value={productForm.sku}
-                      onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })}
-                    />
-                    <input
-                      type="number"
-                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
-                      placeholder="Stock"
-                      value={productForm.stock}
-                      onChange={(e) => setProductForm({ ...productForm, stock: Number(e.target.value) })}
+                      placeholder="slug-del-producto"
+                      value={productForm.slug}
+                      onChange={(e) =>
+                        setProductForm({ ...productForm, slug: normalizeSlug(e.target.value) })
+                      }
                     />
                   </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">SKU</label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] bg-[#f3efe6] px-4 py-3 text-[#6d7e8b]"
+                      value={
+                        editingProductId
+                          ? productForm.sku || 'Se generó automáticamente'
+                          : 'Se generará automáticamente al crear'
+                      }
+                      readOnly
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">
+                      Descripción corta
+                    </label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Resumen breve del producto"
+                      value={productForm.short_description}
+                      onChange={(e) =>
+                        setProductForm({ ...productForm, short_description: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">
+                      Descripción completa
+                    </label>
+                    <textarea
+                      className="min-h-[110px] w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      placeholder="Descripción detallada"
+                      value={productForm.description}
+                      onChange={(e) =>
+                        setProductForm({ ...productForm, description: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-[#143047]">Precio</label>
+                      <div className="flex items-center overflow-hidden rounded-2xl border border-[#d8cdb8] bg-white">
+                        <span className="px-4 text-sm font-semibold text-[#6d7e8b]">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="w-full px-4 py-3 outline-none"
+                          placeholder="0"
+                          value={productForm.price}
+                          onChange={(e) =>
+                            setProductForm({
+                              ...productForm,
+                              price: toSafeNumber(e.target.value, 0),
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-[#143047]">
+                        Precio tachado
+                      </label>
+                      <div className="flex items-center overflow-hidden rounded-2xl border border-[#d8cdb8] bg-white">
+                        <span className="px-4 text-sm font-semibold text-[#6d7e8b]">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="w-full px-4 py-3 outline-none"
+                          placeholder="Opcional"
+                          value={productForm.compare_at_price}
+                          onChange={(e) =>
+                            setProductForm({
+                              ...productForm,
+                              compare_at_price: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-[#143047]">Stock</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                        placeholder="0"
+                        value={productForm.stock}
+                        onChange={(e) =>
+                          setProductForm({
+                            ...productForm,
+                            stock: Math.max(0, toSafeInteger(e.target.value, 0)),
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
                   <div className="flex flex-wrap gap-4 text-sm">
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
                         checked={productForm.featured}
-                        onChange={(e) => setProductForm({ ...productForm, featured: e.target.checked })}
+                        onChange={(e) =>
+                          setProductForm({ ...productForm, featured: e.target.checked })
+                        }
                       />
                       Destacado
                     </label>
@@ -805,90 +1049,109 @@ export default function AdminPage() {
                       <input
                         type="checkbox"
                         checked={productForm.active}
-                        onChange={(e) => setProductForm({ ...productForm, active: e.target.checked })}
+                        onChange={(e) =>
+                          setProductForm({ ...productForm, active: e.target.checked })
+                        }
                       />
                       Activo
                     </label>
                   </div>
-                  <div className="flex gap-3">
+
+                  <div className="flex flex-wrap gap-3">
                     <button
                       disabled={saving}
-                      className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white"
+                      className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
                     >
-                      {editingProductId ? 'Actualizar' : 'Crear'}
+                      {editingProductId ? 'Guardar cambios' : 'Crear producto'}
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={resetProductForm}
+                      className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                    >
+                      Limpiar
+                    </button>
+
                     {editingProductId ? (
                       <button
                         type="button"
-                        onClick={resetProductForm}
-                        className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                        onClick={() => deleteProduct(selectedProduct)}
+                        className="rounded-full border border-[#efc0b8] px-5 py-3 text-sm font-semibold text-[#b34f42]"
                       >
-                        Cancelar
+                        Dar de baja
                       </button>
                     ) : null}
                   </div>
                 </form>
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-[#5e89a6]">
-                        <th className="pb-3">Producto</th>
-                        <th className="pb-3">Categoría</th>
-                        <th className="pb-3">Precio</th>
-                        <th className="pb-3">Stock</th>
-                        <th className="pb-3">Estado</th>
-                        <th className="pb-3">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {products.map((product) => (
-                        <tr key={product.id} className="border-t border-[#efe6d5] align-top">
-                          <td className="py-3">
-                            <p className="font-semibold">{product.name}</p>
-                            <p className="text-xs text-[#6d7e8b]">{product.slug}</p>
-                          </td>
-                          <td className="py-3">{product.categories?.name || '—'}</td>
-                          <td className="py-3">$ {Number(product.price || 0).toLocaleString('es-AR')}</td>
-                          <td className="py-3">{product.stock}</td>
-                          <td className="py-3">
-                            {product.active ? 'Activo' : 'Inactivo'} {product.featured ? '· Destacado' : ''}
-                          </td>
-                          <td className="py-3">
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                onClick={() => {
-                                  setProductForm({
-                                    category_id: product.category_id || '',
-                                    name: product.name || '',
-                                    slug: product.slug || '',
-                                    short_description: product.short_description || '',
-                                    description: product.description || '',
-                                    price: Number(product.price || 0),
-                                    compare_at_price: product.compare_at_price ?? '',
-                                    sku: product.sku || '',
-                                    stock: Number(product.stock || 0),
-                                    featured: Boolean(product.featured),
-                                    active: Boolean(product.active),
-                                  })
-                                  setEditingProductId(product.id)
-                                }}
-                                className="rounded-full border border-[#d8cdb8] px-3 py-1"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                onClick={() => deleteRow(`/api/admin/products/${product.id}`, 'el producto')}
-                                className="rounded-full border border-[#efc0b8] px-3 py-1 text-[#b34f42]"
-                              >
-                                Eliminar
-                              </button>
+                <div className="space-y-3">
+                  {products.length === 0 ? (
+                    <div className="rounded-3xl border border-[#efe6d5] bg-white p-6 text-center text-[#6d7e8b]">
+                      No hay productos activos para administrar.
+                    </div>
+                  ) : (
+                    products.map((product) => {
+                      const isSelected = editingProductId === product.id
+
+                      return (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() => selectProduct(product)}
+                          className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
+                              ? 'border-[#143047] bg-[#eef4f8]'
+                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                            }`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-[#143047]">{product.name}</p>
+                              <p className="mt-1 text-sm text-[#4e6475]">{product.slug}</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {product.sku ? (
+                                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#143047]">
+                                    SKU: {product.sku}
+                                  </span>
+                                ) : null}
+                                {product.categories?.name ? (
+                                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#143047]">
+                                    {product.categories.name}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#6d7e8b]">
+                                    Sin categoría
+                                  </span>
+                                )}
+                              </div>
+                              {product.short_description ? (
+                                <p className="mt-2 text-xs leading-5 text-[#6d7e8b]">
+                                  {product.short_description}
+                                </p>
+                              ) : null}
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+
+                            <div className="flex flex-col items-end gap-2">
+                              <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-xs font-semibold text-[#143047]">
+                                $ {Number(product.price || 0).toLocaleString('es-AR')}
+                              </span>
+                              <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-xs font-semibold text-[#143047]">
+                                Stock {product.stock}
+                              </span>
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-semibold ${product.active
+                                    ? 'bg-[#ecf8f4] text-[#0f6d5f]'
+                                    : 'bg-[#fff1ef] text-[#b34f42]'
+                                  }`}
+                              >
+                                {product.active ? 'Activo' : 'Inactivo'}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })
+                  )}
                 </div>
               </div>
             </SectionCard>
