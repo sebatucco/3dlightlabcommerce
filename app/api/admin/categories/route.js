@@ -4,12 +4,6 @@ import { createAdminSupabaseClient } from '@/lib/admin-supabase'
 
 export const dynamic = 'force-dynamic'
 
-function isValidUuid(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    String(value || '').trim()
-  )
-}
-
 function normalizeSlug(value) {
   return String(value || '')
     .trim()
@@ -36,25 +30,43 @@ function buildPayload(body) {
   }
 }
 
-async function resolveId(context) {
-  const params = await context?.params
-  return String(params?.id || '').trim()
-}
-
-export async function PUT(request, context) {
+export async function GET(request) {
   const auth = await requireAdmin(request)
   if (!auth.authorized) return auth.response
 
-  const id = await resolveId(context)
+  try {
+    const supabase = createAdminSupabaseClient()
 
-  if (!isValidUuid(id)) {
-    return NextResponse.json({ error: 'ID de categoría inválido' }, { status: 400 })
+    const { data, error } = await supabase
+      .from('categories')
+      .select('*')
+      .is('deleted_at', null)
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json(data || [], {
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
+    })
+  } catch (error) {
+    return NextResponse.json(
+      { error: error?.message || 'No se pudieron obtener las categorías' },
+      { status: 500 }
+    )
   }
+}
+
+export async function POST(request) {
+  const auth = await requireAdmin(request)
+  if (!auth.authorized) return auth.response
 
   const body = await request.json().catch(() => ({}))
-  const updates = buildPayload(body)
+  const payload = buildPayload(body)
 
-  if (!updates.name || !updates.slug) {
+  if (!payload.name || !payload.slug) {
     return NextResponse.json(
       { error: 'Nombre y slug son obligatorios' },
       { status: 400 }
@@ -66,42 +78,28 @@ export async function PUT(request, context) {
 
     const { data: existing, error: existingError } = await supabase
       .from('categories')
-      .select('id, deleted_at')
-      .eq('id', id)
+      .select('id')
+      .eq('slug', payload.slug)
+      .is('deleted_at', null)
       .maybeSingle()
 
     if (existingError) {
       return NextResponse.json({ error: existingError.message }, { status: 500 })
     }
 
-    if (!existing || existing.deleted_at) {
-      return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 404 })
-    }
-
-    const { data: slugRow, error: slugError } = await supabase
-      .from('categories')
-      .select('id')
-      .eq('slug', updates.slug)
-      .neq('id', id)
-      .is('deleted_at', null)
-      .maybeSingle()
-
-    if (slugError) {
-      return NextResponse.json({ error: slugError.message }, { status: 500 })
-    }
-
-    if (slugRow) {
+    if (existing) {
       return NextResponse.json(
-        { error: 'Ya existe otra categoría con ese slug' },
+        { error: 'Ya existe una categoría con ese slug' },
         { status: 400 }
       )
     }
 
     const { data, error } = await supabase
       .from('categories')
-      .update(updates)
-      .eq('id', id)
-      .is('deleted_at', null)
+      .insert({
+        ...payload,
+        deleted_at: null,
+      })
       .select('*')
       .single()
 
@@ -109,75 +107,10 @@ export async function PUT(request, context) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data)
+    return NextResponse.json(data, { status: 201 })
   } catch (error) {
     return NextResponse.json(
-      { error: error?.message || 'No se pudo actualizar la categoría' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function DELETE(request, context) {
-  const auth = await requireAdmin(request)
-  if (!auth.authorized) return auth.response
-
-  const id = await resolveId(context)
-
-  if (!isValidUuid(id)) {
-    return NextResponse.json({ error: 'ID de categoría inválido' }, { status: 400 })
-  }
-
-  try {
-    const supabase = createAdminSupabaseClient()
-
-    const { data: category, error: categoryError } = await supabase
-      .from('categories')
-      .select('id, name, deleted_at')
-      .eq('id', id)
-      .maybeSingle()
-
-    if (categoryError) {
-      return NextResponse.json({ error: categoryError.message }, { status: 500 })
-    }
-
-    if (!category || category.deleted_at) {
-      return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 404 })
-    }
-
-    const { error: detachProductsError } = await supabase
-      .from('products')
-      .update({ category_id: null })
-      .eq('category_id', id)
-
-    if (detachProductsError) {
-      return NextResponse.json(
-        {
-          error:
-            detachProductsError.message ||
-            'No se pudieron desacoplar los productos de la categoría',
-        },
-        { status: 500 }
-      )
-    }
-
-    const { error: softDeleteError } = await supabase
-      .from('categories')
-      .update({
-        active: false,
-        deleted_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .is('deleted_at', null)
-
-    if (softDeleteError) {
-      return NextResponse.json({ error: softDeleteError.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ ok: true })
-  } catch (error) {
-    return NextResponse.json(
-      { error: error?.message || 'No se pudo eliminar la categoría' },
+      { error: error?.message || 'No se pudo crear la categoría' },
       { status: 500 }
     )
   }

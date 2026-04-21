@@ -36,11 +36,16 @@ function buildPayload(body) {
   }
 }
 
-export async function PUT(request, { params }) {
+async function resolveId(context) {
+  const params = await context?.params
+  return String(params?.id || '').trim()
+}
+
+export async function PUT(request, context) {
   const auth = await requireAdmin(request)
   if (!auth.authorized) return auth.response
 
-  const id = String(params?.id || '').trim()
+  const id = await resolveId(context)
 
   if (!isValidUuid(id)) {
     return NextResponse.json({ error: 'ID de categoría inválido' }, { status: 400 })
@@ -113,11 +118,11 @@ export async function PUT(request, { params }) {
   }
 }
 
-export async function DELETE(request, { params }) {
+export async function DELETE(request, context) {
   const auth = await requireAdmin(request)
   if (!auth.authorized) return auth.response
 
-  const id = String(params?.id || '').trim()
+  const id = await resolveId(context)
 
   if (!isValidUuid(id)) {
     return NextResponse.json({ error: 'ID de categoría inválido' }, { status: 400 })
@@ -140,27 +145,23 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 404 })
     }
 
-    const { count, error: productsError } = await supabase
+    const { error: detachProductsError } = await supabase
       .from('products')
-      .select('id', { count: 'exact', head: true })
+      .update({ category_id: null })
       .eq('category_id', id)
-      .eq('active', true)
 
-    if (productsError) {
-      return NextResponse.json({ error: productsError.message }, { status: 500 })
-    }
-
-    if ((count || 0) > 0) {
+    if (detachProductsError) {
       return NextResponse.json(
         {
           error:
-            'No podés eliminar esta categoría porque tiene productos activos asociados. Desactivá o mové esos productos primero.',
+            detachProductsError.message ||
+            'No se pudieron desacoplar los productos de la categoría',
         },
-        { status: 400 }
+        { status: 500 }
       )
     }
 
-    const { error } = await supabase
+    const { error: softDeleteError } = await supabase
       .from('categories')
       .update({
         active: false,
@@ -169,8 +170,8 @@ export async function DELETE(request, { params }) {
       .eq('id', id)
       .is('deleted_at', null)
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (softDeleteError) {
+      return NextResponse.json({ error: softDeleteError.message }, { status: 500 })
     }
 
     return NextResponse.json({ ok: true })
