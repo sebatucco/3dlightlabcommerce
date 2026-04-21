@@ -20,12 +20,21 @@ function normalizeSlug(value) {
     .replace(/(^-|-$)/g, '')
 }
 
+function normalizeSkuPrefix(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8)
+}
+
 function buildPayload(body) {
   const name = String(body?.name || '').trim()
   const slug = normalizeSlug(body?.slug || body?.name || '')
   const description = body?.description ? String(body.description).trim() : null
   const sort_order = Number.isFinite(Number(body?.sort_order)) ? Number(body.sort_order) : 0
   const active = body?.active !== false
+  const sku_prefix = normalizeSkuPrefix(body?.sku_prefix || '') || null
 
   return {
     name,
@@ -33,6 +42,7 @@ function buildPayload(body) {
     description,
     sort_order,
     active,
+    sku_prefix,
   }
 }
 
@@ -95,6 +105,27 @@ export async function PUT(request, context) {
         { error: 'Ya existe otra categoría con ese slug' },
         { status: 400 }
       )
+    }
+
+    if (updates.sku_prefix) {
+      const { data: prefixRow, error: prefixError } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('sku_prefix', updates.sku_prefix)
+        .neq('id', id)
+        .is('deleted_at', null)
+        .maybeSingle()
+
+      if (prefixError) {
+        return NextResponse.json({ error: prefixError.message }, { status: 500 })
+      }
+
+      if (prefixRow) {
+        return NextResponse.json(
+          { error: 'Ya existe otra categoría con ese prefijo SKU' },
+          { status: 400 }
+        )
+      }
     }
 
     const { data, error } = await supabase

@@ -18,6 +18,7 @@ const initialCategory = {
   description: '',
   sort_order: 0,
   active: true,
+  sku_prefix: '',
 }
 
 const initialProduct = {
@@ -66,6 +67,14 @@ function normalizeSlug(value) {
     .replace(/(^-|-$)/g, '')
 }
 
+function normalizeSkuPrefix(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8)
+}
+
 function isValidUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(value || '').trim()
@@ -110,6 +119,18 @@ export default function AdminPage() {
   function resetCategoryForm() {
     setCategoryForm(initialCategory)
     setEditingCategoryId(null)
+  }
+
+  function selectCategory(category) {
+    setEditingCategoryId(category.id)
+    setCategoryForm({
+      name: category.name || '',
+      slug: category.slug || '',
+      description: category.description || '',
+      sort_order: Number(category.sort_order || 0),
+      active: Boolean(category.active),
+      sku_prefix: category.sku_prefix || '',
+    })
   }
 
   function resetProductForm() {
@@ -171,6 +192,7 @@ export default function AdminPage() {
   function validateCategoryForm() {
     const name = String(categoryForm.name || '').trim()
     const slug = normalizeSlug(categoryForm.slug || categoryForm.name || '')
+    const sku_prefix = normalizeSkuPrefix(categoryForm.sku_prefix || '')
 
     if (!name) {
       flash('La categoría necesita nombre')
@@ -190,6 +212,7 @@ export default function AdminPage() {
         ? Number(categoryForm.sort_order)
         : 0,
       active: categoryForm.active !== false,
+      sku_prefix: sku_prefix || null,
     }
   }
 
@@ -233,12 +256,51 @@ export default function AdminPage() {
     }
   }
 
+  async function deleteCategory(category) {
+    const id = String(category?.id || editingCategoryId || '').trim()
+
+    if (!isValidUuid(id)) {
+      flash('La categoría no tiene un id válido')
+      return
+    }
+
+    const categoryName = category?.name || categoryForm.name || 'sin nombre'
+    const confirmText = `¿Dar de baja la categoría "${categoryName}"?`
+    if (!window.confirm(confirmText)) return
+
+    try {
+      const response = await fetch(`/api/admin/categories/${id}`, {
+        method: 'DELETE',
+      })
+
+      if (await handleUnauthorized(response)) return
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        flash(data.error || 'No se pudo eliminar la categoría')
+        return
+      }
+
+      if (editingCategoryId === id) {
+        resetCategoryForm()
+      }
+
+      flash('Categoría dada de baja')
+      await loadAll()
+    } catch {
+      flash('No se pudo eliminar la categoría')
+    }
+  }
+
   async function submitProduct(event) {
     event.preventDefault()
     setSaving(true)
 
     try {
-      const endpoint = editingProductId ? `/api/admin/products/${editingProductId}` : '/api/admin/products'
+      const endpoint = editingProductId
+        ? `/api/admin/products/${editingProductId}`
+        : '/api/admin/products'
       const method = editingProductId ? 'PUT' : 'POST'
 
       const response = await fetch(endpoint, {
@@ -267,7 +329,9 @@ export default function AdminPage() {
     setSaving(true)
 
     try {
-      const endpoint = editingImageId ? `/api/admin/product-images/${editingImageId}` : '/api/admin/product-images'
+      const endpoint = editingImageId
+        ? `/api/admin/product-images/${editingImageId}`
+        : '/api/admin/product-images'
       const method = editingImageId ? 'PUT' : 'POST'
 
       const response = await fetch(endpoint, {
@@ -288,42 +352,6 @@ export default function AdminPage() {
       flash('No se pudo guardar la imagen')
     } finally {
       setSaving(false)
-    }
-  }
-
-  async function deleteCategory(category) {
-    const id = String(category?.id || '').trim()
-
-    if (!isValidUuid(id)) {
-      flash('La categoría no tiene un id válido')
-      return
-    }
-
-    const confirmText = `¿Dar de baja la categoría "${category?.name || 'sin nombre'}"?`
-    if (!window.confirm(confirmText)) return
-
-    try {
-      const response = await fetch(`/api/admin/categories/${id}`, {
-        method: 'DELETE',
-      })
-
-      if (await handleUnauthorized(response)) return
-
-      const data = await response.json().catch(() => ({}))
-
-      if (!response.ok) {
-        flash(data.error || 'No se pudo eliminar la categoría')
-        return
-      }
-
-      if (editingCategoryId === id) {
-        resetCategoryForm()
-      }
-
-      flash('Categoría dada de baja')
-      await loadAll()
-    } catch {
-      flash('No se pudo eliminar la categoría')
     }
   }
 
@@ -390,6 +418,11 @@ export default function AdminPage() {
   const productOptions = useMemo(
     () => products.map((item) => ({ id: item.id, label: item.name })),
     [products]
+  )
+
+  const selectedCategory = useMemo(
+    () => categories.find((item) => item.id === editingCategoryId) || null,
+    [categories, editingCategoryId]
   )
 
   if (loading) {
@@ -473,10 +506,29 @@ export default function AdminPage() {
           {activeTab === 'categories' && (
             <SectionCard
               title="ABM de categorías"
-              subtitle="Creá, editá y dales de baja lógica sin romper productos asociados."
+              subtitle="Definí slug, orden y prefijo SKU para automatizar los productos."
             >
-              <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
+              <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
                 <form onSubmit={submitCategory} className="space-y-4 rounded-3xl bg-[#f8f3ea] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-[#143047]">
+                        {editingCategoryId ? 'Editar categoría' : 'Nueva categoría'}
+                      </h3>
+                      <p className="text-xs text-[#6d7e8b]">
+                        {editingCategoryId
+                          ? 'Estás editando la categoría seleccionada.'
+                          : 'Completá los datos para crear una categoría.'}
+                      </p>
+                    </div>
+
+                    {editingCategoryId ? (
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#143047]">
+                        Seleccionada
+                      </span>
+                    ) : null}
+                  </div>
+
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-[#143047]">Nombre</label>
                     <input
@@ -508,8 +560,25 @@ export default function AdminPage() {
                         setCategoryForm({ ...categoryForm, slug: normalizeSlug(e.target.value) })
                       }
                     />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">
+                      Prefijo SKU
+                    </label>
+                    <input
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 uppercase"
+                      placeholder="Ej: LMS"
+                      value={categoryForm.sku_prefix}
+                      onChange={(e) =>
+                        setCategoryForm({
+                          ...categoryForm,
+                          sku_prefix: normalizeSkuPrefix(e.target.value),
+                        })
+                      }
+                    />
                     <p className="mt-1 text-xs text-[#6d7e8b]">
-                      Se usa para URLs y filtros. Solo letras, números y guiones.
+                      Se usará para generar SKUs automáticos como LMS-000001. Solo letras y números.
                     </p>
                   </div>
 
@@ -554,93 +623,93 @@ export default function AdminPage() {
                     Activa
                   </label>
 
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap gap-3">
                     <button
                       disabled={saving}
                       className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
                     >
-                      {editingCategoryId ? 'Actualizar' : 'Crear'}
+                      {editingCategoryId ? 'Guardar cambios' : 'Crear categoría'}
                     </button>
 
-                    {(editingCategoryId || categoryForm.name || categoryForm.slug || categoryForm.description) ? (
+                    <button
+                      type="button"
+                      onClick={resetCategoryForm}
+                      className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                    >
+                      Limpiar
+                    </button>
+
+                    {editingCategoryId ? (
                       <button
                         type="button"
-                        onClick={resetCategoryForm}
-                        className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                        onClick={() => deleteCategory(selectedCategory)}
+                        className="rounded-full border border-[#efc0b8] px-5 py-3 text-sm font-semibold text-[#b34f42]"
                       >
-                        Limpiar
+                        Dar de baja
                       </button>
                     ) : null}
                   </div>
                 </form>
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-[#5e89a6]">
-                        <th className="pb-3">Nombre</th>
-                        <th className="pb-3">Slug</th>
-                        <th className="pb-3">Orden</th>
-                        <th className="pb-3">Estado</th>
-                        <th className="pb-3">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {categories.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="py-6 text-center text-[#6d7e8b]">
-                            No hay categorías activas para administrar.
-                          </td>
-                        </tr>
-                      ) : (
-                        categories.map((category) => (
-                          <tr key={category.id} className="border-t border-[#efe6d5] align-top">
-                            <td className="py-3">
-                              <p className="font-semibold">{category.name}</p>
+                <div className="space-y-3">
+                  {categories.length === 0 ? (
+                    <div className="rounded-3xl border border-[#efe6d5] bg-white p-6 text-center text-[#6d7e8b]">
+                      No hay categorías activas para administrar.
+                    </div>
+                  ) : (
+                    categories.map((category) => {
+                      const isSelected = editingCategoryId === category.id
+
+                      return (
+                        <button
+                          key={category.id}
+                          type="button"
+                          onClick={() => selectCategory(category)}
+                          className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
+                              ? 'border-[#143047] bg-[#eef4f8]'
+                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                            }`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-[#143047]">{category.name}</p>
+                              <p className="mt-1 text-sm text-[#4e6475]">{category.slug}</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {category.sku_prefix ? (
+                                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#143047]">
+                                    SKU: {category.sku_prefix}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#6d7e8b]">
+                                    Sin prefijo SKU
+                                  </span>
+                                )}
+                              </div>
                               {category.description ? (
-                                <p className="mt-1 max-w-[320px] text-xs text-[#6d7e8b]">
+                                <p className="mt-2 text-xs leading-5 text-[#6d7e8b]">
                                   {category.description}
                                 </p>
                               ) : null}
-                            </td>
-                            <td className="py-3">{category.slug}</td>
-                            <td className="py-3">{category.sort_order}</td>
-                            <td className="py-3">
-                              {category.active ? 'Activa' : 'Inactiva'}
-                            </td>
-                            <td className="py-3">
-                              <div className="flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingCategoryId(category.id)
-                                    setCategoryForm({
-                                      name: category.name || '',
-                                      slug: category.slug || '',
-                                      description: category.description || '',
-                                      sort_order: Number(category.sort_order || 0),
-                                      active: Boolean(category.active),
-                                    })
-                                  }}
-                                  className="rounded-full border border-[#d8cdb8] px-3 py-1"
-                                >
-                                  Editar
-                                </button>
+                            </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() => deleteCategory(category)}
-                                  className="rounded-full border border-[#efc0b8] px-3 py-1 text-[#b34f42]"
-                                >
-                                  Dar de baja
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                            <div className="flex flex-col items-end gap-2">
+                              <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-xs font-semibold text-[#143047]">
+                                Orden {category.sort_order}
+                              </span>
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-semibold ${category.active
+                                    ? 'bg-[#ecf8f4] text-[#0f6d5f]'
+                                    : 'bg-[#fff1ef] text-[#b34f42]'
+                                  }`}
+                              >
+                                {category.active ? 'Activa' : 'Inactiva'}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })
+                  )}
                 </div>
               </div>
             </SectionCard>

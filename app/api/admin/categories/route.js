@@ -14,12 +14,21 @@ function normalizeSlug(value) {
     .replace(/(^-|-$)/g, '')
 }
 
+function normalizeSkuPrefix(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8)
+}
+
 function buildPayload(body) {
   const name = String(body?.name || '').trim()
   const slug = normalizeSlug(body?.slug || body?.name || '')
   const description = body?.description ? String(body.description).trim() : null
   const sort_order = Number.isFinite(Number(body?.sort_order)) ? Number(body.sort_order) : 0
   const active = body?.active !== false
+  const sku_prefix = normalizeSkuPrefix(body?.sku_prefix || '') || null
 
   return {
     name,
@@ -27,6 +36,7 @@ function buildPayload(body) {
     description,
     sort_order,
     active,
+    sku_prefix,
   }
 }
 
@@ -76,22 +86,42 @@ export async function POST(request) {
   try {
     const supabase = createAdminSupabaseClient()
 
-    const { data: existing, error: existingError } = await supabase
+    const { data: existingSlug, error: slugError } = await supabase
       .from('categories')
       .select('id')
       .eq('slug', payload.slug)
       .is('deleted_at', null)
       .maybeSingle()
 
-    if (existingError) {
-      return NextResponse.json({ error: existingError.message }, { status: 500 })
+    if (slugError) {
+      return NextResponse.json({ error: slugError.message }, { status: 500 })
     }
 
-    if (existing) {
+    if (existingSlug) {
       return NextResponse.json(
         { error: 'Ya existe una categoría con ese slug' },
         { status: 400 }
       )
+    }
+
+    if (payload.sku_prefix) {
+      const { data: existingPrefix, error: prefixError } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('sku_prefix', payload.sku_prefix)
+        .is('deleted_at', null)
+        .maybeSingle()
+
+      if (prefixError) {
+        return NextResponse.json({ error: prefixError.message }, { status: 500 })
+      }
+
+      if (existingPrefix) {
+        return NextResponse.json(
+          { error: 'Ya existe una categoría con ese prefijo SKU' },
+          { status: 400 }
+        )
+      }
     }
 
     const { data, error } = await supabase
