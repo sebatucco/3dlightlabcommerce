@@ -120,9 +120,7 @@ export default function AdminPedidosPage() {
             const response = await fetch(`/api/orders/${order.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    status: 'approved',
-                }),
+                body: JSON.stringify({ status: 'approved' }),
             })
 
             const data = await response.json()
@@ -151,9 +149,7 @@ export default function AdminPedidosPage() {
             const response = await fetch(`/api/orders/${order.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    shipping_status: shippingStatus,
-                }),
+                body: JSON.stringify({ shipping_status: shippingStatus }),
             })
 
             const data = await response.json()
@@ -213,22 +209,6 @@ export default function AdminPedidosPage() {
         })
     }, [enrichedOrders, statusFilter, paymentFilter, shippingFilter, searchTerm])
 
-    const metrics = useMemo(() => {
-        const pendingCount = enrichedOrders.filter((o) => o.status === 'pending').length
-        const approvedCount = enrichedOrders.filter((o) => o.status === 'approved').length
-        const expiredTransfers = enrichedOrders.filter((o) => o.isExpired).length
-        const totalRevenue = enrichedOrders
-            .filter((o) => o.status === 'approved')
-            .reduce((acc, o) => acc + Number(o.total || 0), 0)
-
-        return {
-            pendingCount,
-            approvedCount,
-            expiredTransfers,
-            totalRevenue,
-        }
-    }, [enrichedOrders])
-
     return (
         <main className="min-h-screen bg-[#f5efe3] text-[#143047]">
             <div className="container mx-auto px-4 py-10">
@@ -255,38 +235,6 @@ export default function AdminPedidosPage() {
                         {error}
                     </div>
                 ) : null}
-
-                <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm">
-                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
-                            Pedidos pendientes
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-[#143047]">{metrics.pendingCount}</p>
-                    </div>
-
-                    <div className="rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm">
-                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
-                            Pedidos aprobados
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-[#143047]">{metrics.approvedCount}</p>
-                    </div>
-
-                    <div className="rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm">
-                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
-                            Transferencias vencidas
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-[#143047]">{metrics.expiredTransfers}</p>
-                    </div>
-
-                    <div className="rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm">
-                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
-                            Ingresos aprobados
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-[#143047]">
-                            {formatPrice(metrics.totalRevenue)}
-                        </p>
-                    </div>
-                </div>
 
                 <div className="mb-6 grid gap-4 rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm lg:grid-cols-[1.2fr_repeat(3,minmax(0,1fr))]">
                     <label className="flex items-center gap-3 rounded-2xl border border-[#e7dbc7] bg-[#faf6ee] px-4 py-3">

@@ -14,22 +14,21 @@ export async function GET(request) {
     const { data, error } = await supabase
       .from('orders')
       .select(`
-        *,
-        order_items(
-          id,
-          order_id,
-          product_id,
-          quantity,
-          price,
-          product_name,
-          product_slug,
-          products(
-            id,
-            name,
-            slug,
-            sku
-          )
-        )
+        id,
+        created_at,
+        external_reference,
+        customer_name,
+        customer_last_name,
+        customer_phone,
+        customer_email,
+        customer_dni,
+        total,
+        status,
+        payment_method,
+        shipping_status,
+        expires_at,
+        paid_at,
+        cancelled_at
       `)
       .order('created_at', { ascending: false })
 

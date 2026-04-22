@@ -5,22 +5,6 @@ import { requireAdmin } from '@/lib/admin-auth'
 const ALLOWED_ORDER_STATUSES = ['pending', 'approved', 'cancelled', 'rejected']
 const ALLOWED_SHIPPING_STATUSES = ['pending', 'preparing', 'shipped', 'delivered', 'cancelled']
 
-function canApproveTransfer(order, nextStatus) {
-  return (
-    order?.payment_method === 'transferencia' &&
-    order?.status !== 'approved' &&
-    nextStatus === 'approved'
-  )
-}
-
-function shouldRestoreStockOnCancel(order, nextStatus) {
-  return (
-    order?.payment_method === 'transferencia' &&
-    order?.status === 'pending' &&
-    nextStatus === 'cancelled'
-  )
-}
-
 async function getOrderOrNull(supabase, id) {
   const { data, error } = await supabase
     .from('orders')
@@ -50,7 +34,6 @@ async function restoreReservedStockForOrder(supabase, orderId) {
 
   for (const item of orderItems || []) {
     const quantity = Number(item?.quantity ?? 0)
-
     if (!item?.product_id || quantity <= 0) continue
 
     const { data: product, error: productError } = await supabase
@@ -192,19 +175,27 @@ export async function PATCH(request, context) {
       if (nextStatus === 'cancelled' && !order.cancelled_at) {
         updates.cancelled_at = new Date().toISOString()
       }
+
+      if (
+        order.payment_method === 'transferencia' &&
+        order.status === 'pending' &&
+        nextStatus === 'approved'
+      ) {
+        updates.expires_at = null
+      }
+
+      if (
+        order.payment_method === 'transferencia' &&
+        order.status === 'pending' &&
+        nextStatus === 'cancelled'
+      ) {
+        const restored = await restoreReservedStockForOrder(supabase, order.id)
+        if (!restored.ok) return restored.response
+      }
     }
 
     if (nextShippingStatus && nextShippingStatus !== order.shipping_status) {
       updates.shipping_status = nextShippingStatus
-    }
-
-    if (canApproveTransfer(order, nextStatus)) {
-      updates.expires_at = null
-    }
-
-    if (shouldRestoreStockOnCancel(order, nextStatus)) {
-      const restored = await restoreReservedStockForOrder(supabase, order.id)
-      if (!restored.ok) return restored.response
     }
 
     if (Object.keys(updates).length === 0) {
