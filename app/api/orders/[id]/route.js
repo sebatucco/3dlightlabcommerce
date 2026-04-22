@@ -51,9 +51,7 @@ async function restoreReservedStockForOrder(supabase, orderId) {
   for (const item of orderItems || []) {
     const quantity = Number(item?.quantity ?? 0)
 
-    if (!item?.product_id || quantity <= 0) {
-      continue
-    }
+    if (!item?.product_id || quantity <= 0) continue
 
     const { data: product, error: productError } = await supabase
       .from('products')
@@ -110,7 +108,17 @@ export async function GET(request, context) {
       .from('orders')
       .select(`
         *,
-        order_items (*)
+        order_items(
+          id,
+          order_id,
+          product_id,
+          quantity,
+          price,
+          product_name,
+          product_slug,
+          product_sku,
+          products(id,name,slug,sku)
+        )
       `)
       .eq('id', id)
       .single()
@@ -205,7 +213,17 @@ export async function PATCH(request, context) {
       .eq('id', id)
       .select(`
         *,
-        order_items (*)
+        order_items(
+          id,
+          order_id,
+          product_id,
+          quantity,
+          price,
+          product_name,
+          product_slug,
+          product_sku,
+          products(id,name,slug,sku)
+        )
       `)
       .single()
 

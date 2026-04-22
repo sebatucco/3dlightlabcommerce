@@ -10,10 +10,35 @@ export async function GET(request) {
 
   try {
     const supabase = createAdminSupabaseClient()
-    const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data || [], { headers: { 'Cache-Control': 'no-store, max-age=0' } })
+
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        order_items(
+          id,
+          order_id,
+          product_id,
+          quantity,
+          price,
+          product_name,
+          product_slug,
+          product_sku
+        )
+      `)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json(data || [], {
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
+    })
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(
+      { error: error?.message || 'No se pudieron obtener los pedidos' },
+      { status: 500 }
+    )
   }
 }
