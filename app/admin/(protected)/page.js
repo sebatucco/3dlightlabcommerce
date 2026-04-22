@@ -27,6 +27,7 @@ const initialImage = {
   use_case: 'catalog',
   is_primary: false,
 }
+
 function SectionCard({ title, subtitle, children, action }) {
   return (
     <section className="rounded-[28px] border border-[#d8cdb8] bg-white p-6 shadow-[0_14px_35px_rgba(20,48,71,0.06)]">
@@ -74,6 +75,21 @@ function toSafeNumber(value, fallback = 0) {
 function toSafeInteger(value, fallback = 0) {
   const num = Number(value)
   return Number.isInteger(num) ? num : fallback
+}
+
+function resolveMediaPreviewUrl(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    return raw
+  }
+
+  if (raw.startsWith('/')) {
+    return raw
+  }
+
+  return `/${raw}`
 }
 
 export default function AdminPage() {
@@ -153,6 +169,19 @@ export default function AdminPage() {
   function resetImageForm() {
     setImageForm(initialImage)
     setEditingImageId(null)
+  }
+
+  function selectImage(image) {
+    setEditingImageId(image.id)
+    setImageForm({
+      product_id: image.product_id || '',
+      image_url: image.image_url || '',
+      alt_text: image.alt_text || '',
+      sort_order: Number(image.sort_order || 0),
+      media_type: image.media_type || 'image',
+      use_case: image.use_case || 'catalog',
+      is_primary: Boolean(image.is_primary),
+    })
   }
 
   async function handleUnauthorized(response) {
@@ -357,13 +386,13 @@ export default function AdminPage() {
       if (await handleUnauthorized(response)) return
 
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) return flash(data.error || 'No se pudo guardar la imagen')
+      if (!response.ok) return flash(data.error || 'No se pudo guardar la media')
 
       resetImageForm()
-      flash('Imagen guardada')
+      flash(editingImageId ? 'Media actualizada' : 'Media creada')
       await loadAll()
     } catch {
-      flash('No se pudo guardar la imagen')
+      flash('No se pudo guardar la media')
     } finally {
       setSaving(false)
     }
@@ -529,8 +558,8 @@ export default function AdminPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${activeTab === tab.id
-                  ? 'bg-[#143047] text-white'
-                  : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
+                    ? 'bg-[#143047] text-white'
+                    : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
                   }`}
               >
                 <tab.icon className="h-4 w-4" />
@@ -731,8 +760,8 @@ export default function AdminPage() {
                           type="button"
                           onClick={() => selectCategory(category)}
                           className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
-                            ? 'border-[#143047] bg-[#eef4f8]'
-                            : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                              ? 'border-[#143047] bg-[#eef4f8]'
+                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
                             }`}
                         >
                           <div className="flex items-start justify-between gap-4">
@@ -755,8 +784,8 @@ export default function AdminPage() {
                               </span>
                               <span
                                 className={`rounded-full px-3 py-1 text-xs font-semibold ${category.active
-                                  ? 'bg-[#ecf8f4] text-[#0f6d5f]'
-                                  : 'bg-[#fff1ef] text-[#b34f42]'
+                                    ? 'bg-[#ecf8f4] text-[#0f6d5f]'
+                                    : 'bg-[#fff1ef] text-[#b34f42]'
                                   }`}
                               >
                                 {category.active ? 'Activa' : 'Inactiva'}
@@ -1013,8 +1042,8 @@ export default function AdminPage() {
                           type="button"
                           onClick={() => selectProduct(p)}
                           className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
-                            ? 'border-[#143047] bg-[#eef4f8]'
-                            : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                              ? 'border-[#143047] bg-[#eef4f8]'
+                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
                             }`}
                         >
                           <div className="flex justify-between gap-4">
@@ -1203,18 +1232,7 @@ export default function AdminPage() {
                         <button
                           key={image.id}
                           type="button"
-                          onClick={() => {
-                            setEditingImageId(image.id)
-                            setImageForm({
-                              product_id: image.product_id || '',
-                              image_url: image.image_url || '',
-                              alt_text: image.alt_text || '',
-                              sort_order: Number(image.sort_order || 0),
-                              media_type: image.media_type || 'image',
-                              use_case: image.use_case || 'catalog',
-                              is_primary: Boolean(image.is_primary),
-                            })
-                          }}
+                          onClick={() => selectImage(image)}
                           className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
                               ? 'border-[#143047] bg-[#eef4f8]'
                               : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
@@ -1223,7 +1241,7 @@ export default function AdminPage() {
                           <div className="flex items-start gap-4">
                             {image.media_type === 'image' ? (
                               <img
-                                src={image.image_url}
+                                src={resolveMediaPreviewUrl(image.image_url)}
                                 alt={image.alt_text || 'Imagen'}
                                 className="h-20 w-20 flex-shrink-0 rounded-2xl object-cover"
                               />
@@ -1238,12 +1256,14 @@ export default function AdminPage() {
                                 {image.products?.name || 'Producto'}
                               </p>
 
-                              <p
-                                className="mt-1 max-w-full truncate text-sm text-[#4e6475]"
-                                title={image.image_url}
-                              >
-                                {image.image_url}
-                              </p>
+                              <div className="mt-1 max-w-full overflow-hidden">
+                                <p
+                                  className="block w-full truncate whitespace-nowrap text-sm text-[#4e6475]"
+                                  title={image.image_url}
+                                >
+                                  {image.image_url}
+                                </p>
+                              </div>
 
                               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                                 <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-[#143047]">
@@ -1275,6 +1295,7 @@ export default function AdminPage() {
               </div>
             </SectionCard>
           )}
+
           {activeTab === 'orders' && (
             <SectionCard title="Pedidos" subtitle="Seguimiento de estado y control del checkout.">
               <div className="space-y-4">
@@ -1305,8 +1326,8 @@ export default function AdminPage() {
                               key={status}
                               onClick={() => updateOrder(order.id, status)}
                               className={`rounded-full px-3 py-1 text-xs font-semibold ${order.status === status
-                                ? 'bg-[#143047] text-white'
-                                : 'border border-[#d8cdb8]'
+                                  ? 'bg-[#143047] text-white'
+                                  : 'border border-[#d8cdb8]'
                                 }`}
                             >
                               {status}
