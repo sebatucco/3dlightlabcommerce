@@ -32,6 +32,8 @@ export default function CheckoutPage() {
   const [isLeavingCheckout, setIsLeavingCheckout] = useState(false)
   const [error, setError] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('mercadopago')
+  const [bankAccounts, setBankAccounts] = useState([])
+  const [bankAccountsLoaded, setBankAccountsLoaded] = useState(false)
 
   const [customerData, setCustomerData] = useState({
     name: '',
@@ -56,6 +58,21 @@ export default function CheckoutPage() {
       router.push('/')
     }
   }, [cart, router, isLeavingCheckout])
+
+  useEffect(() => {
+    async function loadBankAccounts() {
+      try {
+        const res = await fetch('/api/bank-accounts', { cache: 'no-store' })
+        const data = await res.json()
+        setBankAccounts(Array.isArray(data?.accounts) ? data.accounts : [])
+      } catch {
+        setBankAccounts([])
+      } finally {
+        setBankAccountsLoaded(true)
+      }
+    }
+    loadBankAccounts()
+  }, [])
 
   const handleCustomerSubmit = (e) => {
     e.preventDefault()
@@ -351,12 +368,16 @@ export default function CheckoutPage() {
                       description: 'Cobro con tarjeta, saldo en cuenta y medios digitales.',
                       icon: CreditCard,
                     },
-                    {
-                      value: 'transfer',
-                      title: 'Transferencia bancaria',
-                      description: 'Genera el pedido y muestra los datos bancarios para acreditar.',
-                      icon: Building2,
-                    },
+                    ...(bankAccountsLoaded && bankAccounts.length > 0
+                      ? [
+                          {
+                            value: 'transfer',
+                            title: 'Transferencia bancaria',
+                            description: 'Genera el pedido y muestra los datos bancarios para acreditar.',
+                            icon: Building2,
+                          },
+                        ]
+                      : []),
                     {
                       value: 'whatsapp',
                       title: 'Finalizar por WhatsApp',
@@ -397,7 +418,7 @@ export default function CheckoutPage() {
                   })}
                 </div>
 
-                {paymentMethod === 'transfer' && (
+                {paymentMethod === 'transfer' && bankAccounts.length > 0 && (
                   <div className="mt-5 rounded-3xl border border-[#d8cdb8] bg-[#f8f3ea] p-5">
                     <h3 className="text-base font-extrabold text-[#143047]">
                       Vas a ver los datos bancarios en el siguiente paso
@@ -414,7 +435,7 @@ export default function CheckoutPage() {
                           Alias
                         </p>
                         <p className="mt-1 text-sm font-semibold text-[#143047]">
-                          {siteConfig.bankInfo?.alias || 'No configurado'}
+                          {bankAccounts[0]?.alias || '—'}
                         </p>
                       </div>
 
@@ -423,7 +444,7 @@ export default function CheckoutPage() {
                           Titular
                         </p>
                         <p className="mt-1 text-sm font-semibold text-[#143047]">
-                          {siteConfig.bankInfo?.titular || 'No configurado'}
+                          {bankAccounts[0]?.holder_name || '—'}
                         </p>
                       </div>
                     </div>

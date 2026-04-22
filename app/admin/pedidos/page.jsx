@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, RefreshCw, Search } from 'lucide-react'
+import { CheckCircle2, RefreshCw, Search, XCircle } from 'lucide-react'
 import { formatPrice } from '@/lib/mercadopago'
 
 function Badge({ children, variant = 'default' }) {
@@ -63,6 +63,10 @@ export default function AdminPedidosPage() {
     const [paymentFilter, setPaymentFilter] = useState('all')
     const [shippingFilter, setShippingFilter] = useState('all')
     const [searchTerm, setSearchTerm] = useState('')
+    const [receiptForm, setReceiptForm] = useState({
+        transfer_receipt_number: '',
+        transfer_receipt_image_url: '',
+    })
 
     const loadOrders = async () => {
         try {
@@ -100,6 +104,10 @@ export default function AdminPedidosPage() {
             }
 
             setSelectedOrder(data)
+            setReceiptForm({
+                transfer_receipt_number: data.transfer_receipt_number || '',
+                transfer_receipt_image_url: data.transfer_receipt_image_url || '',
+            })
         } catch (err) {
             setError(err.message || 'Error cargando el detalle')
         } finally {
@@ -120,7 +128,11 @@ export default function AdminPedidosPage() {
             const response = await fetch(`/api/orders/${order.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'approved' }),
+                body: JSON.stringify({
+                    status: 'approved',
+                    transfer_receipt_number: receiptForm.transfer_receipt_number,
+                    transfer_receipt_image_url: receiptForm.transfer_receipt_image_url,
+                }),
             })
 
             const data = await response.json()
@@ -130,12 +142,37 @@ export default function AdminPedidosPage() {
             }
 
             await loadOrders()
-
-            if (selectedOrder?.id === order.id) {
-                await loadOrderDetail(order.id)
-            }
+            await loadOrderDetail(order.id)
         } catch (err) {
             setError(err.message || 'Error aprobando transferencia')
+        } finally {
+            setUpdatingId(null)
+        }
+    }
+
+    const handleCancelTransfer = async (order) => {
+        try {
+            setUpdatingId(order.id)
+            setError('')
+
+            const response = await fetch(`/api/orders/${order.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: 'cancelled',
+                }),
+            })
+
+            const data = await response.json()
+
+            if (!response.ok) {
+                throw new Error(data?.error || 'No se pudo cancelar el pedido')
+            }
+
+            await loadOrders()
+            await loadOrderDetail(order.id)
+        } catch (err) {
+            setError(err.message || 'Error cancelando pedido')
         } finally {
             setUpdatingId(null)
         }
@@ -149,7 +186,9 @@ export default function AdminPedidosPage() {
             const response = await fetch(`/api/orders/${order.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ shipping_status: shippingStatus }),
+                body: JSON.stringify({
+                    shipping_status: shippingStatus,
+                }),
             })
 
             const data = await response.json()
@@ -159,12 +198,38 @@ export default function AdminPedidosPage() {
             }
 
             await loadOrders()
-
-            if (selectedOrder?.id === order.id) {
-                await loadOrderDetail(order.id)
-            }
+            await loadOrderDetail(order.id)
         } catch (err) {
             setError(err.message || 'Error actualizando envío')
+        } finally {
+            setUpdatingId(null)
+        }
+    }
+
+    const handleSaveReceiptData = async (order) => {
+        try {
+            setUpdatingId(order.id)
+            setError('')
+
+            const response = await fetch(`/api/orders/${order.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    transfer_receipt_number: receiptForm.transfer_receipt_number,
+                    transfer_receipt_image_url: receiptForm.transfer_receipt_image_url,
+                }),
+            })
+
+            const data = await response.json()
+
+            if (!response.ok) {
+                throw new Error(data?.error || 'No se pudieron guardar los datos del comprobante')
+            }
+
+            await loadOrders()
+            await loadOrderDetail(order.id)
+        } catch (err) {
+            setError(err.message || 'Error guardando comprobante')
         } finally {
             setUpdatingId(null)
         }
@@ -208,6 +273,11 @@ export default function AdminPedidosPage() {
             return statusMatch && paymentMatch && shippingMatch && haystack.includes(term)
         })
     }, [enrichedOrders, statusFilter, paymentFilter, shippingFilter, searchTerm])
+
+    const canEditTransferStatus =
+        selectedOrder?.payment_method === 'transferencia' &&
+        selectedOrder?.status !== 'approved' &&
+        selectedOrder?.status !== 'cancelled'
 
     return (
         <main className="min-h-screen bg-[#f5efe3] text-[#143047]">
@@ -298,10 +368,6 @@ export default function AdminPedidosPage() {
                         ) : (
                             filteredOrders.map((order) => {
                                 const isSelected = selectedOrder?.id === order.id
-                                const canApprove =
-                                    order.payment_method === 'transferencia' &&
-                                    order.status === 'pending' &&
-                                    !order.isExpired
 
                                 return (
                                     <button
@@ -309,8 +375,8 @@ export default function AdminPedidosPage() {
                                         type="button"
                                         onClick={() => handleSelectOrder(order)}
                                         className={`w-full rounded-3xl border p-5 text-left shadow-sm transition ${isSelected
-                                            ? 'border-[#143047] bg-[#eef4f8]'
-                                            : 'border-[#d8cdb8] bg-white hover:bg-[#faf6ee]'
+                                                ? 'border-[#143047] bg-[#eef4f8]'
+                                                : 'border-[#d8cdb8] bg-white hover:bg-[#faf6ee]'
                                             }`}
                                     >
                                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -336,33 +402,12 @@ export default function AdminPedidosPage() {
                                                 <p className="mt-1 text-xs text-[#6d7e8b]">
                                                     Ref: {order.external_reference || order.id}
                                                 </p>
-
-                                                {order.isExpired ? (
-                                                    <p className="mt-2 text-xs font-semibold text-[#b44a42]">
-                                                        Transferencia vencida
-                                                    </p>
-                                                ) : null}
                                             </div>
 
                                             <div className="flex flex-col items-start gap-3 md:items-end">
                                                 <p className="text-xl font-extrabold text-[#143047]">
                                                     {formatPrice(Number(order.total || 0))}
                                                 </p>
-
-                                                {canApprove ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            handleApproveTransfer(order)
-                                                        }}
-                                                        disabled={updatingId === order.id}
-                                                        className="inline-flex items-center gap-2 rounded-full bg-[#143047] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
-                                                    >
-                                                        <CheckCircle2 className="h-4 w-4" />
-                                                        Aprobar transferencia
-                                                    </button>
-                                                ) : null}
                                             </div>
                                         </div>
                                     </button>
@@ -442,6 +487,62 @@ export default function AdminPedidosPage() {
                                     </div>
                                 </div>
 
+                                {(selectedOrder.payment_method === 'transferencia') && (
+                                    <div className="rounded-2xl bg-[#faf6ee] p-4">
+                                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                                            Comprobante de transferencia
+                                        </p>
+
+                                        <div className="mt-3 space-y-3">
+                                            <input
+                                                type="text"
+                                                placeholder="Número de comprobante"
+                                                value={receiptForm.transfer_receipt_number}
+                                                onChange={(e) =>
+                                                    setReceiptForm((prev) => ({
+                                                        ...prev,
+                                                        transfer_receipt_number: e.target.value,
+                                                    }))
+                                                }
+                                                className="w-full rounded-2xl border border-[#d8cdb8] bg-white px-4 py-3 text-sm outline-none"
+                                            />
+
+                                            <input
+                                                type="text"
+                                                placeholder="URL de imagen del recibo"
+                                                value={receiptForm.transfer_receipt_image_url}
+                                                onChange={(e) =>
+                                                    setReceiptForm((prev) => ({
+                                                        ...prev,
+                                                        transfer_receipt_image_url: e.target.value,
+                                                    }))
+                                                }
+                                                className="w-full rounded-2xl border border-[#d8cdb8] bg-white px-4 py-3 text-sm outline-none"
+                                            />
+
+                                            {selectedOrder.transfer_receipt_image_url ? (
+                                                <a
+                                                    href={selectedOrder.transfer_receipt_image_url}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="inline-flex text-sm font-semibold text-[#143047] underline"
+                                                >
+                                                    Ver recibo cargado
+                                                </a>
+                                            ) : null}
+
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveReceiptData(selectedOrder)}
+                                                disabled={updatingId === selectedOrder.id}
+                                                className="rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047] disabled:opacity-50"
+                                            >
+                                                Guardar comprobante
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="rounded-2xl bg-[#faf6ee] p-4">
                                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
                                         Items
@@ -472,8 +573,6 @@ export default function AdminPedidosPage() {
                                                             <p className="mt-1 text-xs text-[#6d7e8b]">
                                                                 Cantidad: {item.quantity}
                                                             </p>
-
-                                                            {/* opcional pero MUY recomendado */}
                                                             <p className="mt-1 text-xs text-[#6d7e8b]">
                                                                 Subtotal: {formatPrice(Number(item.subtotal || 0))}
                                                             </p>
@@ -495,22 +594,33 @@ export default function AdminPedidosPage() {
                                 </div>
 
                                 <div className="grid gap-4 md:grid-cols-2">
-                                    {selectedOrder.payment_method === 'transferencia' ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleApproveTransfer(selectedOrder)}
-                                            disabled={
-                                                updatingId === selectedOrder.id ||
-                                                selectedOrder.status !== 'pending'
-                                            }
-                                            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
-                                        >
-                                            <CheckCircle2 className="h-4 w-4" />
-                                            Aprobar transferencia
-                                        </button>
+                                    {canEditTransferStatus ? (
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleApproveTransfer(selectedOrder)}
+                                                disabled={updatingId === selectedOrder.id}
+                                                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                                            >
+                                                <CheckCircle2 className="h-4 w-4" />
+                                                Aprobar transferencia
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCancelTransfer(selectedOrder)}
+                                                disabled={updatingId === selectedOrder.id}
+                                                className="inline-flex items-center justify-center gap-2 rounded-full border border-[#efc0b8] bg-white px-5 py-3 text-sm font-semibold text-[#b34f42] disabled:opacity-50"
+                                            >
+                                                <XCircle className="h-4 w-4" />
+                                                Cancelar pedido
+                                            </button>
+                                        </div>
                                     ) : (
                                         <div className="rounded-full border border-[#d8cdb8] px-5 py-3 text-center text-sm text-[#6d7e8b]">
-                                            Este pedido no requiere aprobación manual de pago.
+                                            {selectedOrder.payment_method !== 'transferencia'
+                                                ? 'Este pedido no permite cambio manual de estado.'
+                                                : 'Este pedido ya no puede cambiar de estado.'}
                                         </div>
                                     )}
 
@@ -522,8 +632,8 @@ export default function AdminPedidosPage() {
                                                 onClick={() => handleShippingStatusChange(selectedOrder, status)}
                                                 disabled={updatingId === selectedOrder.id}
                                                 className={`rounded-full px-4 py-2 text-xs font-semibold ${selectedOrder.shipping_status === status
-                                                    ? 'bg-[#143047] text-white'
-                                                    : 'border border-[#d8cdb8] bg-white text-[#143047]'
+                                                        ? 'bg-[#143047] text-white'
+                                                        : 'border border-[#d8cdb8] bg-white text-[#143047]'
                                                     } disabled:opacity-50`}
                                             >
                                                 {status}

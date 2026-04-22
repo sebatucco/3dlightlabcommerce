@@ -18,6 +18,10 @@ async function resolveId(context) {
   return String(params?.id || '').trim()
 }
 
+function normalizeText(value) {
+  return String(value || '').trim() || null
+}
+
 async function getOrderOrNull(supabase, id) {
   const { data, error } = await supabase
     .from('orders')
@@ -154,18 +158,8 @@ export async function PATCH(request, context) {
 
     const nextStatus = body.status ? String(body.status).trim() : ''
     const nextShippingStatus = body.shipping_status ? String(body.shipping_status).trim() : ''
-
-    if (!nextStatus && !nextShippingStatus) {
-      return NextResponse.json({ error: 'No hay cambios para aplicar' }, { status: 400 })
-    }
-
-    if (nextStatus && !ALLOWED_ORDER_STATUSES.includes(nextStatus)) {
-      return NextResponse.json({ error: 'Estado de pedido inválido' }, { status: 400 })
-    }
-
-    if (nextShippingStatus && !ALLOWED_SHIPPING_STATUSES.includes(nextShippingStatus)) {
-      return NextResponse.json({ error: 'Estado de envío inválido' }, { status: 400 })
-    }
+    const receiptNumber = normalizeText(body.transfer_receipt_number)
+    const receiptImageUrl = normalizeText(body.transfer_receipt_image_url)
 
     const supabase = createAdminSupabaseClient()
     const order = await getOrderOrNull(supabase, id)
@@ -176,8 +170,11 @@ export async function PATCH(request, context) {
 
     const updates = {}
 
-    // Estado del pedido: solo manual para transferencia
-    if (nextStatus && nextStatus !== order.status) {
+    if (nextStatus) {
+      if (!ALLOWED_ORDER_STATUSES.includes(nextStatus)) {
+        return NextResponse.json({ error: 'Estado de pedido inválido' }, { status: 400 })
+      }
+
       if (order.payment_method !== 'transferencia') {
         return NextResponse.json(
           { error: 'Solo los pedidos por transferencia pueden cambiar estado manualmente' },
@@ -185,30 +182,46 @@ export async function PATCH(request, context) {
         )
       }
 
-      updates.status = nextStatus
-
-      if (nextStatus === 'approved' && !order.paid_at) {
-        updates.paid_at = new Date().toISOString()
-        updates.expires_at = null
+      if (order.status === 'approved' || order.status === 'cancelled') {
+        return NextResponse.json(
+          { error: 'Un pedido aprobado o cancelado ya no puede cambiar de estado' },
+          { status: 400 }
+        )
       }
 
-      if (nextStatus === 'cancelled' && !order.cancelled_at) {
-        updates.cancelled_at = new Date().toISOString()
-      }
+      if (nextStatus !== order.status) {
+        updates.status = nextStatus
 
-      if (
-        order.payment_method === 'transferencia' &&
-        order.status === 'pending' &&
-        nextStatus === 'cancelled'
-      ) {
-        const restored = await restoreReservedStockForOrder(supabase, order.id)
-        if (!restored.ok) return restored.response
+        if (nextStatus === 'approved') {
+          updates.paid_at = order.paid_at || new Date().toISOString()
+          updates.expires_at = null
+        }
+
+        if (nextStatus === 'cancelled') {
+          updates.cancelled_at = order.cancelled_at || new Date().toISOString()
+
+          if (order.status === 'pending') {
+            const restored = await restoreReservedStockForOrder(supabase, order.id)
+            if (!restored.ok) return restored.response
+          }
+        }
       }
     }
 
-    // Estado de envío: sí se puede gestionar desde admin
-    if (nextShippingStatus && nextShippingStatus !== order.shipping_status) {
+    if (nextShippingStatus) {
+      if (!ALLOWED_SHIPPING_STATUSES.includes(nextShippingStatus)) {
+        return NextResponse.json({ error: 'Estado de envío inválido' }, { status: 400 })
+      }
+
       updates.shipping_status = nextShippingStatus
+    }
+
+    if (receiptNumber !== null) {
+      updates.transfer_receipt_number = receiptNumber
+    }
+
+    if (receiptImageUrl !== null) {
+      updates.transfer_receipt_image_url = receiptImageUrl
     }
 
     if (Object.keys(updates).length === 0) {

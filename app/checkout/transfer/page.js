@@ -17,10 +17,28 @@ function TransferContent() {
   const orderId = searchParams.get('orderId')
   const [copied, setCopied] = useState(null)
   const { clearCart } = useCart()
+  const [bankAccounts, setBankAccounts] = useState([])
+  const [bankLoading, setBankLoading] = useState(true)
 
   useEffect(() => {
     clearCart()
   }, [clearCart])
+
+  useEffect(() => {
+    async function loadBankAccounts() {
+      try {
+        const res = await fetch('/api/bank-accounts', { cache: 'no-store' })
+        const data = await res.json()
+        const accounts = Array.isArray(data?.accounts) ? data.accounts : []
+        setBankAccounts(accounts)
+      } catch {
+        setBankAccounts([])
+      } finally {
+        setBankLoading(false)
+      }
+    }
+    loadBankAccounts()
+  }, [])
 
   const copyToClipboard = async (text, field) => {
     try {
@@ -32,7 +50,19 @@ function TransferContent() {
     }
   }
 
-  const bankInfo = siteConfig.bankInfo
+  // Fallback to siteConfig.bankInfo if no dynamic accounts
+  const useFallback = !bankLoading && bankAccounts.length === 0 && siteConfig.bankInfo
+  const fallbackAccount = useFallback
+    ? {
+        bank_name: siteConfig.bankInfo.banco || '',
+        holder_name: siteConfig.bankInfo.titular || '',
+        cbu: siteConfig.bankInfo.cbu || '',
+        alias: siteConfig.bankInfo.alias || '',
+        cuit: siteConfig.bankInfo.cuit || '',
+      }
+    : null
+
+  const accountsToShow = bankAccounts.length > 0 ? bankAccounts : (fallbackAccount ? [fallbackAccount] : [])
 
   return (
     <main className="min-h-screen bg-[#f5efe3] text-[#143047]">
@@ -67,40 +97,66 @@ function TransferContent() {
             </div>
           )}
 
-          <div className="mt-6 rounded-[34px] border border-[#d8cdb8] bg-white p-6 shadow-[0_18px_50px_rgba(20,48,71,0.08)]">
-            <h2 className="text-2xl font-extrabold text-[#143047]">Datos bancarios</h2>
-            <div className="mt-6 space-y-4">
-              {[
-                { label: 'Banco', value: bankInfo.banco },
-                { label: 'Titular', value: bankInfo.titular },
-                { label: 'CBU', value: bankInfo.cbu },
-                { label: 'Alias', value: bankInfo.alias },
-                { label: 'CUIT', value: bankInfo.cuit },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-center justify-between gap-4 rounded-3xl bg-[#f8f3ea] p-4"
-                >
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
-                      {item.label}
-                    </p>
-                    <p className="mt-1 font-semibold text-[#143047]">{item.value}</p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard(item.value, item.label)}
-                    className="rounded-full border border-[#d8cdb8] p-3 text-[#143047] hover:bg-white"
-                  >
-                    {copied === item.label ? (
-                      <Check className="h-4 w-4 text-[#0f6d5f]" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              ))}
+          {bankLoading ? (
+            <div className="mt-6 flex items-center justify-center rounded-[34px] border border-[#d8cdb8] bg-white p-10 shadow-sm">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#5e89a6] border-t-transparent" />
             </div>
-          </div>
+          ) : accountsToShow.length === 0 ? (
+            <div className="mt-6 rounded-[34px] border border-[#d8cdb8] bg-white p-8 text-center shadow-sm">
+              <p className="text-lg font-bold text-[#143047]">No hay cuentas bancarias configuradas</p>
+              <p className="mt-2 text-sm text-[#4e6475]">
+                Por favor, contactanos por WhatsApp para coordinar el pago.
+              </p>
+            </div>
+          ) : (
+            accountsToShow.map((account, index) => {
+              const accountFields = [
+                account.bank_name ? { label: 'Banco', value: account.bank_name } : null,
+                { label: 'Titular', value: account.holder_name },
+                { label: 'CBU', value: account.cbu },
+                account.alias ? { label: 'Alias', value: account.alias } : null,
+                account.cuit ? { label: 'CUIT', value: account.cuit } : null,
+              ].filter(Boolean)
+
+              return (
+                <div
+                  key={account.id || `account-${index}`}
+                  className="mt-6 rounded-[34px] border border-[#d8cdb8] bg-white p-6 shadow-[0_18px_50px_rgba(20,48,71,0.08)]"
+                >
+                  <h2 className="text-2xl font-extrabold text-[#143047]">
+                    {accountsToShow.length > 1
+                      ? `${account.bank_name || 'Cuenta bancaria'}`
+                      : 'Datos bancarios'}
+                  </h2>
+                  <div className="mt-6 space-y-4">
+                    {accountFields.map((item) => (
+                      <div
+                        key={item.label}
+                        className="flex items-center justify-between gap-4 rounded-3xl bg-[#f8f3ea] p-4"
+                      >
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                            {item.label}
+                          </p>
+                          <p className="mt-1 font-semibold text-[#143047]">{item.value}</p>
+                        </div>
+                        <button
+                          onClick={() => copyToClipboard(item.value, `${index}-${item.label}`)}
+                          className="rounded-full border border-[#d8cdb8] p-3 text-[#143047] hover:bg-white"
+                        >
+                          {copied === `${index}-${item.label}` ? (
+                            <Check className="h-4 w-4 text-[#0f6d5f]" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })
+          )}
 
           <div className="mt-6 rounded-[34px] bg-[#143047] p-6 text-white shadow-[0_18px_50px_rgba(20,48,71,0.18)]">
             <h2 className="text-2xl font-extrabold">Pasos</h2>
