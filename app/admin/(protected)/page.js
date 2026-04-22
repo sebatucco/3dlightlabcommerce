@@ -1254,8 +1254,8 @@ export default function AdminPage() {
                           type="button"
                           onClick={() => selectImage(image)}
                           className={`block w-full max-w-full overflow-hidden rounded-3xl border p-4 text-left transition ${isSelected
-                              ? 'border-[#143047] bg-[#eef4f8]'
-                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                            ? 'border-[#143047] bg-[#eef4f8]'
+                            : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
                             }`}
                         >
                           <div className="flex min-w-0 items-start gap-4 overflow-hidden">
@@ -1277,19 +1277,21 @@ export default function AdminPage() {
                               </p>
 
                               <div className="mt-1 min-w-0 max-w-full overflow-hidden">
-                                <p
-                                  className="block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm text-[#4e6475]"
-                                  title={image.image_url}
-                                >
-                                  {getMediaDisplayUrl(image.image_url)}
-                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  <span
+                                    className="max-w-full truncate rounded-full bg-[#f8f3ea] px-3 py-1 text-xs font-semibold text-[#143047]"
+                                    title={getMediaFileName(image.image_url)}
+                                  >
+                                    {getMediaFileName(image.image_url) || 'archivo'}
+                                  </span>
 
-                                <p
-                                  className="mt-1 block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#6d7e8b]"
-                                  title={getMediaFileName(image.image_url)}
-                                >
-                                  Archivo: {getMediaFileName(image.image_url) || '—'}
-                                </p>
+                                  <span
+                                    className="rounded-full bg-white px-3 py-1 text-xs text-[#6d7e8b]"
+                                    title={image.image_url}
+                                  >
+                                    Ruta guardada
+                                  </span>
+                                </div>
                               </div>
 
                               <div className="mt-2 flex flex-wrap gap-2 text-xs">
@@ -1309,7 +1311,7 @@ export default function AdminPage() {
                                 ) : null}
                               </div>
 
-                              <p className="mt-2 line-clamp-1 text-xs text-[#6d7e8b]">
+                              <p className="mt-2 truncate text-xs text-[#6d7e8b]" title={image.alt_text || '—'}>
                                 Alt: {image.alt_text || '—'}
                               </p>
                             </div>
