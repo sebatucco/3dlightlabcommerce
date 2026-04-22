@@ -61,6 +61,26 @@ function normalizeSkuPrefix(value) {
     .slice(0, 8)
 }
 
+function getMediaDisplayUrl(value, maxLength = 56) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  if (raw.length <= maxLength) return raw
+
+  const head = raw.slice(0, 28)
+  const tail = raw.slice(-18)
+  return `${head}...${tail}`
+}
+
+function getMediaFileName(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  const clean = raw.split('?')[0].split('#')[0]
+  const parts = clean.split('/')
+  return parts[parts.length - 1] || raw
+}
+
 function isValidUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(value || '').trim()
@@ -558,8 +578,8 @@ export default function AdminPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${activeTab === tab.id
-                    ? 'bg-[#143047] text-white'
-                    : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
+                  ? 'bg-[#143047] text-white'
+                  : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
                   }`}
               >
                 <tab.icon className="h-4 w-4" />
@@ -745,7 +765,7 @@ export default function AdminPage() {
                   </div>
                 </form>
 
-                <div className="space-y-3">
+                <div className="min-w-0 space-y-3 overflow-hidden">
                   {categories.length === 0 ? (
                     <div className="rounded-3xl border border-[#efe6d5] bg-white p-6 text-center text-[#6d7e8b]">
                       No hay categorías activas para administrar.
@@ -759,9 +779,9 @@ export default function AdminPage() {
                           key={category.id}
                           type="button"
                           onClick={() => selectCategory(category)}
-                          className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
-                              ? 'border-[#143047] bg-[#eef4f8]'
-                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                          className={`w-full overflow-hidden rounded-3xl border p-4 text-left transition ${isSelected
+                            ? 'border-[#143047] bg-[#eef4f8]'
+                            : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
                             }`}
                         >
                           <div className="flex items-start justify-between gap-4">
@@ -784,8 +804,8 @@ export default function AdminPage() {
                               </span>
                               <span
                                 className={`rounded-full px-3 py-1 text-xs font-semibold ${category.active
-                                    ? 'bg-[#ecf8f4] text-[#0f6d5f]'
-                                    : 'bg-[#fff1ef] text-[#b34f42]'
+                                  ? 'bg-[#ecf8f4] text-[#0f6d5f]'
+                                  : 'bg-[#fff1ef] text-[#b34f42]'
                                   }`}
                               >
                                 {category.active ? 'Activa' : 'Inactiva'}
@@ -1041,9 +1061,9 @@ export default function AdminPage() {
                           key={p.id}
                           type="button"
                           onClick={() => selectProduct(p)}
-                          className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
-                              ? 'border-[#143047] bg-[#eef4f8]'
-                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                          className={`w-full overflow-hidden rounded-3xl border p-4 text-left transition ${isSelected
+                            ? 'border-[#143047] bg-[#eef4f8]'
+                            : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
                             }`}
                         >
                           <div className="flex justify-between gap-4">
@@ -1233,7 +1253,7 @@ export default function AdminPage() {
                           key={image.id}
                           type="button"
                           onClick={() => selectImage(image)}
-                          className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
+                          className={`w-full overflow-hidden rounded-3xl border p-4 text-left transition ${isSelected
                               ? 'border-[#143047] bg-[#eef4f8]'
                               : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
                             }`}
@@ -1256,12 +1276,16 @@ export default function AdminPage() {
                                 {image.products?.name || 'Producto'}
                               </p>
 
-                              <div className="mt-1 max-w-full overflow-hidden">
+                              <div className="mt-1 min-w-0 overflow-hidden">
                                 <p
-                                  className="block w-full truncate whitespace-nowrap text-sm text-[#4e6475]"
+                                  className="block max-w-full truncate whitespace-nowrap text-sm text-[#4e6475]"
                                   title={image.image_url}
                                 >
-                                  {image.image_url}
+                                  {getMediaDisplayUrl(image.image_url)}
+                                </p>
+
+                                <p className="mt-1 text-xs text-[#6d7e8b]">
+                                  Archivo: {getMediaFileName(image.image_url) || '—'}
                                 </p>
                               </div>
 
@@ -1326,8 +1350,8 @@ export default function AdminPage() {
                               key={status}
                               onClick={() => updateOrder(order.id, status)}
                               className={`rounded-full px-3 py-1 text-xs font-semibold ${order.status === status
-                                  ? 'bg-[#143047] text-white'
-                                  : 'border border-[#d8cdb8]'
+                                ? 'bg-[#143047] text-white'
+                                : 'border border-[#d8cdb8]'
                                 }`}
                             >
                               {status}
