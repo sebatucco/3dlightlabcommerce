@@ -116,8 +116,12 @@ export async function GET(request, context) {
           price,
           product_name,
           product_slug,
-          product_sku,
-          products(id,name,slug,sku)
+          products(
+            id,
+            name,
+            slug,
+            sku
+          )
         )
       `)
       .eq('id', id)
@@ -221,8 +225,12 @@ export async function PATCH(request, context) {
           price,
           product_name,
           product_slug,
-          product_sku,
-          products(id,name,slug,sku)
+          products(
+            id,
+            name,
+            slug,
+            sku
+          )
         )
       `)
       .single()

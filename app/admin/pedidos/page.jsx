@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Clock3, PackageCheck, RefreshCw, Truck, XCircle } from 'lucide-react'
+import { CheckCircle2, RefreshCw, Search } from 'lucide-react'
 import { formatPrice } from '@/lib/mercadopago'
 
 function Badge({ children, variant = 'default' }) {
@@ -44,6 +44,14 @@ function formatDate(value) {
     }
 }
 
+function normalizeText(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+}
+
 export default function AdminPedidosPage() {
     const [orders, setOrders] = useState([])
     const [loading, setLoading] = useState(true)
@@ -53,7 +61,8 @@ export default function AdminPedidosPage() {
     const [error, setError] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
     const [paymentFilter, setPaymentFilter] = useState('all')
-
+    const [shippingFilter, setShippingFilter] = useState('all')
+    const [searchTerm, setSearchTerm] = useState('')
 
     const loadOrders = async () => {
         try {
@@ -178,12 +187,31 @@ export default function AdminPedidosPage() {
     }, [orders])
 
     const filteredOrders = useMemo(() => {
+        const term = normalizeText(searchTerm)
+
         return enrichedOrders.filter((order) => {
             const statusMatch = statusFilter === 'all' || order.status === statusFilter
             const paymentMatch = paymentFilter === 'all' || order.payment_method === paymentFilter
-            return statusMatch && paymentMatch
+            const shippingMatch = shippingFilter === 'all' || order.shipping_status === shippingFilter
+
+            if (!term) {
+                return statusMatch && paymentMatch && shippingMatch
+            }
+
+            const haystack = normalizeText([
+                order.customer_name,
+                order.customer_last_name,
+                order.customer_phone,
+                order.customer_email,
+                order.customer_dni,
+                order.external_reference,
+            ]
+                .filter(Boolean)
+                .join(' '))
+
+            return statusMatch && paymentMatch && shippingMatch && haystack.includes(term)
         })
-    }, [enrichedOrders, statusFilter, paymentFilter])
+    }, [enrichedOrders, statusFilter, paymentFilter, shippingFilter, searchTerm])
 
     const metrics = useMemo(() => {
         const pendingCount = enrichedOrders.filter((o) => o.status === 'pending').length
@@ -252,7 +280,7 @@ export default function AdminPedidosPage() {
 
                     <div className="rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm">
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
-                            Total vendido
+                            Ingresos aprobados
                         </p>
                         <p className="mt-2 text-3xl font-extrabold text-[#143047]">
                             {formatPrice(metrics.totalRevenue)}
@@ -260,277 +288,299 @@ export default function AdminPedidosPage() {
                     </div>
                 </div>
 
-                <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-                    <section className="rounded-[34px] border border-[#d8cdb8] bg-white p-6 shadow-[0_18px_50px_rgba(20,48,71,0.08)]">
+                <div className="mb-6 grid gap-4 rounded-3xl border border-[#d8cdb8] bg-white p-5 shadow-sm lg:grid-cols-[1.2fr_repeat(3,minmax(0,1fr))]">
+                    <label className="flex items-center gap-3 rounded-2xl border border-[#e7dbc7] bg-[#faf6ee] px-4 py-3">
+                        <Search className="h-4 w-4 text-[#5e89a6]" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por DNI, apellido, nombre, email o referencia"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-transparent text-sm outline-none"
+                        />
+                    </label>
 
-                        <h2 className="text-2xl font-extrabold">Listado</h2>
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="rounded-2xl border border-[#e7dbc7] bg-[#faf6ee] px-4 py-3 text-sm outline-none"
+                    >
+                        <option value="all">Todos los estados</option>
+                        <option value="pending">Pendiente</option>
+                        <option value="approved">Aprobado</option>
+                        <option value="cancelled">Cancelado</option>
+                        <option value="rejected">Rechazado</option>
+                    </select>
 
-                        <div className="mt-6 grid gap-3 md:grid-cols-2">
-                            <select
-                                value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
-                                className="rounded-2xl border border-[#d8cdb8] bg-[#f8f3ea] px-4 py-3 text-sm text-[#143047] outline-none"
-                            >
-                                <option value="all">Todos los estados</option>
-                                <option value="pending">Pendientes</option>
-                                <option value="approved">Aprobados</option>
-                                <option value="cancelled">Cancelados</option>
-                                <option value="rejected">Rechazados</option>
-                            </select>
+                    <select
+                        value={paymentFilter}
+                        onChange={(e) => setPaymentFilter(e.target.value)}
+                        className="rounded-2xl border border-[#e7dbc7] bg-[#faf6ee] px-4 py-3 text-sm outline-none"
+                    >
+                        <option value="all">Todos los pagos</option>
+                        <option value="mercadopago">Mercado Pago</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="whatsapp">WhatsApp</option>
+                    </select>
 
-                            <select
-                                value={paymentFilter}
-                                onChange={(e) => setPaymentFilter(e.target.value)}
-                                className="rounded-2xl border border-[#d8cdb8] bg-[#f8f3ea] px-4 py-3 text-sm text-[#143047] outline-none"
-                            >
-                                <option value="all">Todos los medios de pago</option>
-                                <option value="mercadopago">Mercado Pago</option>
-                                <option value="transferencia">Transferencia</option>
-                                <option value="whatsapp">WhatsApp</option>
-                            </select>
-                        </div>
+                    <select
+                        value={shippingFilter}
+                        onChange={(e) => setShippingFilter(e.target.value)}
+                        className="rounded-2xl border border-[#e7dbc7] bg-[#faf6ee] px-4 py-3 text-sm outline-none"
+                    >
+                        <option value="all">Todos los envíos</option>
+                        <option value="pending">Pendiente</option>
+                        <option value="preparing">Preparando</option>
+                        <option value="shipped">Enviado</option>
+                        <option value="delivered">Entregado</option>
+                        <option value="cancelled">Cancelado</option>
+                    </select>
+                </div>
 
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(380px,0.8fr)]">
+                    <div className="space-y-4">
                         {loading ? (
-                            <div className="mt-6 text-sm text-[#4e6475]">Cargando pedidos...</div>
-                        ) : enrichedOrders.length === 0 ? (
-                            <div className="mt-6 text-sm text-[#4e6475]">No hay pedidos todavía.</div>
+                            <div className="rounded-3xl border border-[#d8cdb8] bg-white p-6 shadow-sm">
+                                <p className="text-sm text-[#4e6475]">Cargando pedidos…</p>
+                            </div>
+                        ) : filteredOrders.length === 0 ? (
+                            <div className="rounded-3xl border border-[#d8cdb8] bg-white p-6 shadow-sm">
+                                <p className="text-sm text-[#4e6475]">No hay pedidos para los filtros aplicados.</p>
+                            </div>
                         ) : (
-                            <div className="mt-6 space-y-4">
-                                {enrichedOrders.map((order) => (
+                            filteredOrders.map((order) => {
+                                const isSelected = selectedOrder?.id === order.id
+                                const canApprove =
+                                    order.payment_method === 'transferencia' &&
+                                    order.status === 'pending' &&
+                                    !order.isExpired
+
+                                return (
                                     <button
                                         key={order.id}
                                         type="button"
                                         onClick={() => handleSelectOrder(order)}
-                                        className={`w-full rounded-3xl border p-5 text-left transition ${selectedOrder?.id === order.id
-                                            ? 'border-[#143047] bg-[#eef4f8]'
-                                            : 'border-[#e4d8c5] bg-[#fcfaf6] hover:bg-white'
+                                        className={`w-full rounded-3xl border p-5 text-left shadow-sm transition ${isSelected
+                                                ? 'border-[#143047] bg-[#eef4f8]'
+                                                : 'border-[#d8cdb8] bg-white hover:bg-[#faf6ee]'
                                             }`}
                                     >
-                                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                            <div className="space-y-2">
-                                                <p className="text-sm font-bold uppercase tracking-[0.12em] text-[#5e89a6]">
-                                                    Pedido
+                                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="text-lg font-bold text-[#143047]">{order.customer_name}</p>
+                                                    <Badge variant={getOrderStatusVariant(order.status)}>
+                                                        {order.status}
+                                                    </Badge>
+                                                    <Badge variant={getShippingStatusVariant(order.shipping_status)}>
+                                                        {order.shipping_status || 'pending'}
+                                                    </Badge>
+                                                </div>
+
+                                                <p className="mt-2 text-sm text-[#4e6475]">
+                                                    {order.customer_phone} · {order.customer_email || 'sin email'}
                                                 </p>
-                                                <p className="font-extrabold">{order.id}</p>
-                                                <p className="text-sm text-[#4e6475]">
-                                                    {order.customer_name || 'Sin nombre'} · {order.customer_phone || 'Sin teléfono'}
+
+                                                <p className="mt-1 text-xs text-[#6d7e8b]">
+                                                    DNI: {order.customer_dni || '—'} · Pago: {order.payment_method || '—'}
                                                 </p>
-                                                <p className="text-sm text-[#4e6475]">
-                                                    {formatDate(order.created_at)}
+
+                                                <p className="mt-1 text-xs text-[#6d7e8b]">
+                                                    Ref: {order.external_reference || order.id}
                                                 </p>
-                                            </div>
-
-                                            <div className="flex flex-wrap gap-2">
-                                                <Badge variant={getOrderStatusVariant(order.status)}>
-                                                    {order.status || 'pending'}
-                                                </Badge>
-
-                                                <Badge variant={getShippingStatusVariant(order.shipping_status)}>
-                                                    envío: {order.shipping_status || 'pending'}
-                                                </Badge>
-
-                                                <Badge variant="info">
-                                                    {order.payment_method || '—'}
-                                                </Badge>
-
-                                                {order.shipping_free ? (
-                                                    <Badge variant="success">envío gratis</Badge>
-                                                ) : (
-                                                    <Badge>envío pago</Badge>
-                                                )}
 
                                                 {order.isExpired ? (
-                                                    <Badge variant="danger">vencido</Badge>
+                                                    <p className="mt-2 text-xs font-semibold text-[#b44a42]">
+                                                        Transferencia vencida
+                                                    </p>
+                                                ) : null}
+                                            </div>
+
+                                            <div className="flex flex-col items-start gap-3 md:items-end">
+                                                <p className="text-xl font-extrabold text-[#143047]">
+                                                    {formatPrice(Number(order.total || 0))}
+                                                </p>
+
+                                                {canApprove ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            handleApproveTransfer(order)
+                                                        }}
+                                                        disabled={updatingId === order.id}
+                                                        className="inline-flex items-center gap-2 rounded-full bg-[#143047] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                                                    >
+                                                        <CheckCircle2 className="h-4 w-4" />
+                                                        Aprobar transferencia
+                                                    </button>
                                                 ) : null}
                                             </div>
                                         </div>
-
-                                        <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-[#4e6475]">
-                                            <span>Total: {formatPrice(order.total)}</span>
-                                            <span>Envío: {formatPrice(order.shipping_cost || 0)}</span>
-                                        </div>
                                     </button>
-                                ))}
-                            </div>
+                                )
+                            })
                         )}
-                    </section>
+                    </div>
 
-                    <aside className="rounded-[34px] border border-[#d8cdb8] bg-white p-6 shadow-[0_18px_50px_rgba(20,48,71,0.08)]">
-                        <h2 className="text-2xl font-extrabold">Detalle</h2>
-
+                    <div className="rounded-3xl border border-[#d8cdb8] bg-white p-6 shadow-sm">
                         {!selectedOrder ? (
-                            <div className="mt-6 text-sm text-[#4e6475]">
-                                Seleccioná un pedido para ver el detalle.
+                            <div className="flex h-full min-h-[320px] items-center justify-center text-center text-sm text-[#6d7e8b]">
+                                Seleccioná un pedido para ver el detalle completo.
                             </div>
                         ) : selectedOrderLoading ? (
-                            <div className="mt-6 text-sm text-[#4e6475]">
-                                Cargando detalle...
+                            <div className="flex h-full min-h-[320px] items-center justify-center text-center text-sm text-[#6d7e8b]">
+                                Cargando detalle…
                             </div>
                         ) : (
-                            <div className="mt-6 space-y-6">
-                                <div className="rounded-3xl bg-[#f8f3ea] p-5">
-                                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
-                                        Pedido
+                            <div className="space-y-6">
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <h2 className="text-2xl font-extrabold text-[#143047]">
+                                            Pedido {selectedOrder.external_reference || selectedOrder.id}
+                                        </h2>
+                                        <Badge variant={getOrderStatusVariant(selectedOrder.status)}>
+                                            {selectedOrder.status}
+                                        </Badge>
+                                        <Badge variant={getShippingStatusVariant(selectedOrder.shipping_status)}>
+                                            {selectedOrder.shipping_status || 'pending'}
+                                        </Badge>
+                                    </div>
+                                    <p className="mt-2 text-sm text-[#6d7e8b]">
+                                        Creado: {formatDate(selectedOrder.created_at)}
                                     </p>
-                                    <p className="mt-2 break-all text-sm font-bold">{selectedOrder.id}</p>
                                 </div>
 
-                                <div className="grid gap-4">
-                                    <div className="rounded-3xl border border-[#e4d8c5] p-5">
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="rounded-2xl bg-[#faf6ee] p-4">
                                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
                                             Cliente
                                         </p>
-                                        <p className="mt-2 text-sm font-semibold">{selectedOrder.customer_name || '—'}</p>
-                                        <p className="mt-1 text-sm text-[#4e6475]">{selectedOrder.customer_phone || '—'}</p>
-                                        <p className="mt-1 text-sm text-[#4e6475]">{selectedOrder.customer_email || '—'}</p>
-                                    </div>
-
-                                    <div className="rounded-3xl border border-[#e4d8c5] p-5">
-                                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
-                                            Pago
-                                        </p>
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            <Badge variant={getOrderStatusVariant(selectedOrder.status)}>
-                                                {selectedOrder.status || 'pending'}
-                                            </Badge>
-                                            <Badge variant="info">
-                                                {selectedOrder.payment_method || '—'}
-                                            </Badge>
-                                        </div>
-
-                                        <div className="mt-4 space-y-2 text-sm text-[#4e6475]">
-                                            <p>Total: {formatPrice(selectedOrder.total)}</p>
-                                            <p>Creado: {formatDate(selectedOrder.created_at)}</p>
-                                            <p>Pagado: {formatDate(selectedOrder.paid_at)}</p>
-                                            <p>Vence: {formatDate(selectedOrder.expires_at)}</p>
-                                        </div>
-
-                                        {selectedOrder.payment_method === 'transferencia' && selectedOrder.status === 'pending' ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleApproveTransfer(selectedOrder)}
-                                                disabled={updatingId === selectedOrder.id}
-                                                className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#143047] px-5 py-3 text-sm font-bold uppercase tracking-[0.16em] text-white hover:bg-[#214a69] disabled:opacity-60"
-                                            >
-                                                <CheckCircle2 className="h-4 w-4" />
-                                                {updatingId === selectedOrder.id ? 'Procesando...' : 'Aprobar transferencia'}
-                                            </button>
-                                        ) : null}
-
-                                        {selectedOrder.payment_method === 'transferencia' && selectedOrder.status === 'pending' ? (
-                                            <button
-                                                type="button"
-                                                onClick={async () => {
-                                                    try {
-                                                        setUpdatingId(selectedOrder.id)
-                                                        setError('')
-
-                                                        const response = await fetch(`/api/orders/${selectedOrder.id}`, {
-                                                            method: 'PATCH',
-                                                            headers: { 'Content-Type': 'application/json' },
-                                                            body: JSON.stringify({
-                                                                status: 'cancelled',
-                                                            }),
-                                                        })
-
-                                                        const data = await response.json()
-
-                                                        if (!response.ok) {
-                                                            throw new Error(data?.error || 'No se pudo cancelar la transferencia')
-                                                        }
-
-                                                        await loadOrders()
-                                                        await loadOrderDetail(selectedOrder.id)
-                                                    } catch (err) {
-                                                        setError(err.message || 'Error cancelando transferencia')
-                                                    } finally {
-                                                        setUpdatingId(null)
-                                                    }
-                                                }}
-                                                disabled={updatingId === selectedOrder.id}
-                                                className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#f2c7c2] bg-[#fff1ef] px-5 py-3 text-sm font-bold uppercase tracking-[0.16em] text-[#b44a42] hover:bg-[#ffe7e3] disabled:opacity-60"
-                                            >
-                                                <XCircle className="h-4 w-4" />
-                                                {updatingId === selectedOrder.id ? 'Procesando...' : 'Cancelar transferencia'}
-                                            </button>
-                                        ) : null}
-                                    </div>
-
-                                    <div className="rounded-3xl border border-[#e4d8c5] p-5">
-                                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
-                                            Envío
-                                        </p>
-
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            <Badge variant={getShippingStatusVariant(selectedOrder.shipping_status)}>
-                                                {selectedOrder.shipping_status || 'pending'}
-                                            </Badge>
-
-                                            {selectedOrder.shipping_free ? (
-                                                <Badge variant="success">sin cargo</Badge>
-                                            ) : (
-                                                <Badge>con cargo</Badge>
-                                            )}
-                                        </div>
-
-                                        <div className="mt-4 space-y-2 text-sm text-[#4e6475]">
-                                            <p>Método: {selectedOrder.shipping_method || '—'}</p>
-                                            <p>Costo: {formatPrice(selectedOrder.shipping_cost || 0)}</p>
-                                            <p>
-                                                Dirección: {selectedOrder.shipping_street || '—'} {selectedOrder.shipping_number || ''}
-                                            </p>
-                                            <p>
-                                                {selectedOrder.shipping_city || '—'}, {selectedOrder.shipping_province || '—'}
-                                            </p>
-                                        </div>
-
-                                        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                                            {[
-                                                { value: 'pending', label: 'Pendiente', icon: Clock3 },
-                                                { value: 'preparing', label: 'Preparando', icon: PackageCheck },
-                                                { value: 'shipped', label: 'Enviado', icon: Truck },
-                                                { value: 'delivered', label: 'Entregado', icon: CheckCircle2 },
-                                                { value: 'cancelled', label: 'Cancelado', icon: XCircle },
-                                            ].map((option) => {
-                                                const Icon = option.icon
-                                                return (
-                                                    <button
-                                                        key={option.value}
-                                                        type="button"
-                                                        disabled={updatingId === selectedOrder.id}
-                                                        onClick={() => handleShippingStatusChange(selectedOrder, option.value)}
-                                                        className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d8cdb8] px-4 py-3 text-sm font-semibold text-[#143047] hover:bg-[#f8f3ea] disabled:opacity-60"
-                                                    >
-                                                        <Icon className="h-4 w-4" />
-                                                        {option.label}
-                                                    </button>
-                                                )
-                                            })}
+                                        <div className="mt-3 space-y-2 text-sm text-[#143047]">
+                                            <p><b>Nombre:</b> {selectedOrder.customer_name || '—'}</p>
+                                            <p><b>Apellido:</b> {selectedOrder.customer_last_name || '—'}</p>
+                                            <p><b>DNI:</b> {selectedOrder.customer_dni || '—'}</p>
+                                            <p><b>Teléfono:</b> {selectedOrder.customer_phone || '—'}</p>
+                                            <p><b>Email:</b> {selectedOrder.customer_email || '—'}</p>
                                         </div>
                                     </div>
 
-                                    <div className="rounded-3xl border border-[#e4d8c5] p-5">
+                                    <div className="rounded-2xl bg-[#faf6ee] p-4">
                                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
-                                            Items
+                                            Entrega
                                         </p>
+                                        <div className="mt-3 space-y-2 text-sm text-[#143047]">
+                                            <p><b>Método:</b> {selectedOrder.shipping_method || '—'}</p>
+                                            <p><b>Dirección:</b> {selectedOrder.address || '—'}</p>
+                                            <p><b>Calle:</b> {selectedOrder.shipping_street || '—'} {selectedOrder.shipping_number || ''}</p>
+                                            <p><b>Piso/Depto:</b> {[selectedOrder.shipping_floor, selectedOrder.shipping_apartment].filter(Boolean).join(' / ') || '—'}</p>
+                                            <p><b>Ciudad:</b> {selectedOrder.shipping_city || '—'}</p>
+                                            <p><b>Provincia:</b> {selectedOrder.shipping_province || '—'}</p>
+                                            <p><b>CP:</b> {selectedOrder.shipping_postal_code || '—'}</p>
+                                        </div>
+                                    </div>
+                                </div>
 
-                                        <div className="mt-4 space-y-3">
-                                            {(selectedOrder.order_items || []).map((item) => (
-                                                <div key={`${item.order_id}-${item.product_id}`} className="rounded-2xl bg-[#f8f3ea] p-4">
-                                                    <p className="font-semibold">{item.product_name}</p>
-                                                    <div className="mt-1 text-sm text-[#4e6475]">
-                                                        <p>Cantidad: {item.quantity}</p>
-                                                        <p>Unitario: {formatPrice(item.unit_price)}</p>
-                                                        <p>Subtotal: {formatPrice(item.subtotal)}</p>
+                                <div className="rounded-2xl bg-[#faf6ee] p-4">
+                                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                                        Pago
+                                    </p>
+                                    <div className="mt-3 space-y-2 text-sm text-[#143047]">
+                                        <p><b>Método:</b> {selectedOrder.payment_method || '—'}</p>
+                                        <p><b>Total:</b> {formatPrice(Number(selectedOrder.total || 0))}</p>
+                                        <p><b>Pagado:</b> {formatDate(selectedOrder.paid_at)}</p>
+                                        <p><b>Vence:</b> {formatDate(selectedOrder.expires_at)}</p>
+                                        <p><b>Cancelado:</b> {formatDate(selectedOrder.cancelled_at)}</p>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl bg-[#faf6ee] p-4">
+                                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                                        Items
+                                    </p>
+                                    <div className="mt-3 space-y-3">
+                                        {(selectedOrder.order_items || []).length === 0 ? (
+                                            <p className="text-sm text-[#6d7e8b]">No hay items cargados.</p>
+                                        ) : (
+                                            selectedOrder.order_items.map((item) => (
+                                                <div
+                                                    key={item.id}
+                                                    className="rounded-2xl border border-[#e7dbc7] bg-white px-4 py-3 text-sm"
+                                                >
+                                                    <div className="flex items-start justify-between gap-4">
+                                                        <div>
+                                                            <p className="font-semibold text-[#143047]">
+                                                                {item.products?.name || item.product_name || 'Producto'}
+                                                            </p>
+                                                            <p className="mt-1 text-xs text-[#6d7e8b]">
+                                                                SKU: {item.products?.sku || '—'}
+                                                            </p>
+                                                        </div>
+
+                                                        <div className="text-right">
+                                                            <p className="font-semibold text-[#143047]">
+                                                                {formatPrice(Number(item.price || 0))}
+                                                            </p>
+                                                            <p className="mt-1 text-xs text-[#6d7e8b]">
+                                                                Cantidad: {item.quantity}
+                                                            </p>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            ))}
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl bg-[#faf6ee] p-4">
+                                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#5e89a6]">
+                                        Notas
+                                    </p>
+                                    <p className="mt-3 text-sm text-[#143047]">
+                                        {selectedOrder.customer_notes || selectedOrder.notes || 'Sin notas del cliente.'}
+                                    </p>
+                                </div>
+
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    {selectedOrder.payment_method === 'transferencia' ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleApproveTransfer(selectedOrder)}
+                                            disabled={
+                                                updatingId === selectedOrder.id ||
+                                                selectedOrder.status !== 'pending'
+                                            }
+                                            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                                        >
+                                            <CheckCircle2 className="h-4 w-4" />
+                                            Aprobar transferencia
+                                        </button>
+                                    ) : (
+                                        <div className="rounded-full border border-[#d8cdb8] px-5 py-3 text-center text-sm text-[#6d7e8b]">
+                                            Este pedido no requiere aprobación manual de pago.
                                         </div>
+                                    )}
+
+                                    <div className="flex flex-wrap gap-2">
+                                        {['pending', 'preparing', 'shipped', 'delivered', 'cancelled'].map((status) => (
+                                            <button
+                                                key={status}
+                                                type="button"
+                                                onClick={() => handleShippingStatusChange(selectedOrder, status)}
+                                                disabled={updatingId === selectedOrder.id}
+                                                className={`rounded-full px-4 py-2 text-xs font-semibold ${selectedOrder.shipping_status === status
+                                                        ? 'bg-[#143047] text-white'
+                                                        : 'border border-[#d8cdb8] bg-white text-[#143047]'
+                                                    } disabled:opacity-50`}
+                                            >
+                                                {status}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
                         )}
-                    </aside>
+                    </div>
                 </div>
             </div>
         </main>

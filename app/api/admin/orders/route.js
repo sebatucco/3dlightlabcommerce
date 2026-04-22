@@ -23,7 +23,12 @@ export async function GET(request) {
           price,
           product_name,
           product_slug,
-          product_sku
+          products(
+            id,
+            name,
+            slug,
+            sku
+          )
         )
       `)
       .order('created_at', { ascending: false })
