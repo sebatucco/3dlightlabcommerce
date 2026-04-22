@@ -1254,8 +1254,8 @@ export default function AdminPage() {
                           type="button"
                           onClick={() => selectImage(image)}
                           className={`block w-full max-w-full overflow-hidden rounded-3xl border p-4 text-left transition ${isSelected
-                            ? 'border-[#143047] bg-[#eef4f8]'
-                            : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                              ? 'border-[#143047] bg-[#eef4f8]'
+                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
                             }`}
                         >
                           <div className="flex min-w-0 items-start gap-4 overflow-hidden">
@@ -1311,7 +1311,10 @@ export default function AdminPage() {
                                 ) : null}
                               </div>
 
-                              <p className="mt-2 truncate text-xs text-[#6d7e8b]" title={image.alt_text || '—'}>
+                              <p
+                                className="mt-2 block max-w-full truncate text-xs text-[#6d7e8b]"
+                                title={image.alt_text || '—'}
+                              >
                                 Alt: {image.alt_text || '—'}
                               </p>
                             </div>
