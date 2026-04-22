@@ -1,9 +1,22 @@
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/admin-auth'
+import { createAdminSupabaseClient } from '@/lib/admin-supabase'
+
+export const dynamic = 'force-dynamic'
 
 const ALLOWED_ORDER_STATUSES = ['pending', 'approved', 'cancelled', 'rejected']
 const ALLOWED_SHIPPING_STATUSES = ['pending', 'preparing', 'shipped', 'delivered', 'cancelled']
+
+function isValidUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || '').trim()
+  )
+}
+
+async function resolveId(context) {
+  const params = await context?.params
+  return String(params?.id || '').trim()
+}
 
 async function getOrderOrNull(supabase, id) {
   const { data, error } = await supabase
@@ -78,14 +91,13 @@ export async function GET(request, context) {
   if (!auth.authorized) return auth.response
 
   try {
-    const params = await context.params
-    const id = params?.id
+    const id = await resolveId(context)
 
-    if (!id) {
-      return NextResponse.json({ error: 'Falta id' }, { status: 400 })
+    if (!isValidUuid(id)) {
+      return NextResponse.json({ error: 'ID de pedido inválido' }, { status: 400 })
     }
 
-    const supabase = createAdminClient()
+    const supabase = createAdminSupabaseClient()
 
     const { data, error } = await supabase
       .from('orders')
@@ -111,13 +123,13 @@ export async function GET(request, context) {
       .single()
 
     if (error || !data) {
-      return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+      return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
     }
 
     return NextResponse.json(data)
   } catch (error) {
     return NextResponse.json(
-      { error: error?.message || 'Error obteniendo orden' },
+      { error: error?.message || 'Error obteniendo pedido' },
       { status: 500 }
     )
   }
@@ -128,11 +140,10 @@ export async function PATCH(request, context) {
   if (!auth.authorized) return auth.response
 
   try {
-    const params = await context.params
-    const id = params?.id
+    const id = await resolveId(context)
 
-    if (!id) {
-      return NextResponse.json({ error: 'Falta id' }, { status: 400 })
+    if (!isValidUuid(id)) {
+      return NextResponse.json({ error: 'ID de pedido inválido' }, { status: 400 })
     }
 
     const body = await request.json().catch(() => null)
@@ -149,39 +160,40 @@ export async function PATCH(request, context) {
     }
 
     if (nextStatus && !ALLOWED_ORDER_STATUSES.includes(nextStatus)) {
-      return NextResponse.json({ error: 'Estado de orden inválido' }, { status: 400 })
+      return NextResponse.json({ error: 'Estado de pedido inválido' }, { status: 400 })
     }
 
     if (nextShippingStatus && !ALLOWED_SHIPPING_STATUSES.includes(nextShippingStatus)) {
       return NextResponse.json({ error: 'Estado de envío inválido' }, { status: 400 })
     }
 
-    const supabase = createAdminClient()
+    const supabase = createAdminSupabaseClient()
     const order = await getOrderOrNull(supabase, id)
 
     if (!order) {
-      return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+      return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
     }
 
     const updates = {}
 
+    // estado de pago / pedido: SOLO transferencia
     if (nextStatus && nextStatus !== order.status) {
+      if (order.payment_method !== 'transferencia') {
+        return NextResponse.json(
+          { error: 'Solo los pedidos por transferencia pueden cambiar estado manualmente' },
+          { status: 400 }
+        )
+      }
+
       updates.status = nextStatus
 
       if (nextStatus === 'approved' && !order.paid_at) {
         updates.paid_at = new Date().toISOString()
+        updates.expires_at = null
       }
 
       if (nextStatus === 'cancelled' && !order.cancelled_at) {
         updates.cancelled_at = new Date().toISOString()
-      }
-
-      if (
-        order.payment_method === 'transferencia' &&
-        order.status === 'pending' &&
-        nextStatus === 'approved'
-      ) {
-        updates.expires_at = null
       }
 
       if (
@@ -194,6 +206,7 @@ export async function PATCH(request, context) {
       }
     }
 
+    // estado de envío: permitido desde admin
     if (nextShippingStatus && nextShippingStatus !== order.shipping_status) {
       updates.shipping_status = nextShippingStatus
     }
@@ -228,7 +241,7 @@ export async function PATCH(request, context) {
 
     if (error || !data) {
       return NextResponse.json(
-        { error: error?.message || 'No se pudo actualizar la orden' },
+        { error: error?.message || 'No se pudo actualizar el pedido' },
         { status: 500 }
       )
     }
@@ -236,7 +249,7 @@ export async function PATCH(request, context) {
     return NextResponse.json({ ok: true, order: data })
   } catch (error) {
     return NextResponse.json(
-      { error: error?.message || 'Error actualizando orden' },
+      { error: error?.message || 'Error actualizando pedido' },
       { status: 500 }
     )
   }
