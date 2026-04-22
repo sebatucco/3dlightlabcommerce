@@ -1279,14 +1279,14 @@ export default function AdminPage() {
                               <div className="mt-1 min-w-0 max-w-full overflow-hidden">
                                 <div className="flex min-w-0 flex-wrap gap-2 overflow-hidden">
                                   <span
-                                    className="inline-block max-w-[220px] truncate rounded-full bg-[#f8f3ea] px-3 py-1 text-xs font-semibold text-[#143047] align-middle"
+                                    className="inline-block max-w-[180px] truncate rounded-full bg-[#f8f3ea] px-3 py-1 text-xs font-semibold text-[#143047] align-middle"
                                     title={getMediaFileName(image.image_url)}
                                   >
                                     {getMediaFileName(image.image_url) || 'archivo'}
                                   </span>
 
                                   <span
-                                    className="inline-block max-w-[140px] truncate rounded-full bg-white px-3 py-1 text-xs text-[#6d7e8b] align-middle"
+                                    className="inline-block max-w-[120px] truncate rounded-full bg-white px-3 py-1 text-xs text-[#6d7e8b] align-middle"
                                     title={image.image_url}
                                   >
                                     Ruta guardada
@@ -1294,7 +1294,7 @@ export default function AdminPage() {
                                 </div>
                               </div>
 
-                              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                              <div className="mt-2 flex min-w-0 flex-wrap gap-2 overflow-hidden text-xs">
                                 <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-[#143047]">
                                   {image.media_type}
                                 </span>
