@@ -107,10 +107,10 @@ export async function GET(request, context) {
           id,
           order_id,
           product_id,
-          quantity,
-          price,
           product_name,
-          product_slug,
+          unit_price,
+          quantity,
+          subtotal,
           products(
             id,
             name,
@@ -176,7 +176,7 @@ export async function PATCH(request, context) {
 
     const updates = {}
 
-    // estado de pago / pedido: SOLO transferencia
+    // Estado del pedido: solo manual para transferencia
     if (nextStatus && nextStatus !== order.status) {
       if (order.payment_method !== 'transferencia') {
         return NextResponse.json(
@@ -206,7 +206,7 @@ export async function PATCH(request, context) {
       }
     }
 
-    // estado de envío: permitido desde admin
+    // Estado de envío: sí se puede gestionar desde admin
     if (nextShippingStatus && nextShippingStatus !== order.shipping_status) {
       updates.shipping_status = nextShippingStatus
     }
@@ -225,10 +225,10 @@ export async function PATCH(request, context) {
           id,
           order_id,
           product_id,
-          quantity,
-          price,
           product_name,
-          product_slug,
+          unit_price,
+          quantity,
+          subtotal,
           products(
             id,
             name,

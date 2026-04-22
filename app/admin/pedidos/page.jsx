@@ -309,8 +309,8 @@ export default function AdminPedidosPage() {
                                         type="button"
                                         onClick={() => handleSelectOrder(order)}
                                         className={`w-full rounded-3xl border p-5 text-left shadow-sm transition ${isSelected
-                                                ? 'border-[#143047] bg-[#eef4f8]'
-                                                : 'border-[#d8cdb8] bg-white hover:bg-[#faf6ee]'
+                                            ? 'border-[#143047] bg-[#eef4f8]'
+                                            : 'border-[#d8cdb8] bg-white hover:bg-[#faf6ee]'
                                             }`}
                                     >
                                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -467,10 +467,15 @@ export default function AdminPedidosPage() {
 
                                                         <div className="text-right">
                                                             <p className="font-semibold text-[#143047]">
-                                                                {formatPrice(Number(item.price || 0))}
+                                                                {formatPrice(Number(item.unit_price || 0))}
                                                             </p>
                                                             <p className="mt-1 text-xs text-[#6d7e8b]">
                                                                 Cantidad: {item.quantity}
+                                                            </p>
+
+                                                            {/* opcional pero MUY recomendado */}
+                                                            <p className="mt-1 text-xs text-[#6d7e8b]">
+                                                                Subtotal: {formatPrice(Number(item.subtotal || 0))}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -517,8 +522,8 @@ export default function AdminPedidosPage() {
                                                 onClick={() => handleShippingStatusChange(selectedOrder, status)}
                                                 disabled={updatingId === selectedOrder.id}
                                                 className={`rounded-full px-4 py-2 text-xs font-semibold ${selectedOrder.shipping_status === status
-                                                        ? 'bg-[#143047] text-white'
-                                                        : 'border border-[#d8cdb8] bg-white text-[#143047]'
+                                                    ? 'bg-[#143047] text-white'
+                                                    : 'border border-[#d8cdb8] bg-white text-[#143047]'
                                                     } disabled:opacity-50`}
                                             >
                                                 {status}
