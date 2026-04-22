@@ -1049,10 +1049,29 @@ export default function AdminPage() {
           {activeTab === 'images' && (
             <SectionCard
               title="ABM de media"
-              subtitle="Administrá imágenes y modelos 3D por producto, con tipo, uso y prioridad."
+              subtitle="Seleccioná una imagen o modelo para editarlo desde el formulario."
             >
               <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
                 <form onSubmit={submitImage} className="space-y-4 rounded-3xl bg-[#f8f3ea] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-[#143047]">
+                        {editingImageId ? 'Editar media' : 'Nueva media'}
+                      </h3>
+                      <p className="text-xs text-[#6d7e8b]">
+                        {editingImageId
+                          ? 'Estás editando la media seleccionada.'
+                          : 'Completá los datos para asociar una imagen o modelo 3D.'}
+                      </p>
+                    </div>
+
+                    {editingImageId ? (
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#143047]">
+                        Seleccionada
+                      </span>
+                    ) : null}
+                  </div>
+
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-[#143047]">Producto</label>
                     <select
@@ -1070,7 +1089,9 @@ export default function AdminPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#143047]">URL o path del archivo</label>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">
+                      URL o path del archivo
+                    </label>
                     <input
                       className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
                       placeholder="Ej: /products/images/archivo.jpg o URL de Supabase Storage"
@@ -1080,7 +1101,9 @@ export default function AdminPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#143047]">Texto alternativo</label>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">
+                      Texto alternativo
+                    </label>
                     <input
                       className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
                       placeholder="Texto alternativo"
@@ -1139,21 +1162,29 @@ export default function AdminPage() {
                     Marcar como principal para ese tipo/uso
                   </label>
 
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap gap-3">
                     <button
                       disabled={saving}
                       className="rounded-full bg-[#143047] px-5 py-3 text-sm font-semibold text-white"
                     >
-                      {editingImageId ? 'Actualizar' : 'Crear'}
+                      {editingImageId ? 'Guardar cambios' : 'Crear media'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={resetImageForm}
+                      className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                    >
+                      Limpiar
                     </button>
 
                     {editingImageId ? (
                       <button
                         type="button"
-                        onClick={resetImageForm}
-                        className="rounded-full border border-[#d8cdb8] px-5 py-3 text-sm font-semibold"
+                        onClick={() => deleteRow(`/api/admin/product-images/${editingImageId}`, 'la media')}
+                        className="rounded-full border border-[#efc0b8] px-5 py-3 text-sm font-semibold text-[#b34f42]"
                       >
-                        Cancelar
+                        Eliminar
                       </button>
                     ) : null}
                   </div>
@@ -1165,82 +1196,85 @@ export default function AdminPage() {
                       No hay media cargada todavía.
                     </div>
                   ) : (
-                    images.map((image) => (
-                      <div
-                        key={image.id}
-                        className="flex flex-col gap-4 rounded-3xl border border-[#efe6d5] bg-white p-4"
-                      >
-                        <div className="flex items-start gap-4">
-                          {image.media_type === 'image' ? (
-                            <img
-                              src={image.image_url}
-                              alt={image.alt_text || 'Imagen'}
-                              className="h-20 w-20 rounded-2xl object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#f3efe6] text-xs font-semibold text-[#6d7e8b]">
-                              3D
-                            </div>
-                          )}
+                    images.map((image) => {
+                      const isSelected = editingImageId === image.id
 
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-[#143047]">{image.products?.name || 'Producto'}</p>
-                            <p className="truncate text-sm text-[#4e6475]">{image.image_url}</p>
-                            <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                              <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-[#143047]">
-                                {image.media_type}
-                              </span>
-                              <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-[#143047]">
-                                {image.use_case || 'sin use_case'}
-                              </span>
-                              <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-[#143047]">
-                                Orden {image.sort_order}
-                              </span>
-                              {image.is_primary ? (
-                                <span className="rounded-full bg-[#ecf8f4] px-3 py-1 text-[#0f6d5f]">
-                                  Principal
+                      return (
+                        <button
+                          key={image.id}
+                          type="button"
+                          onClick={() => {
+                            setEditingImageId(image.id)
+                            setImageForm({
+                              product_id: image.product_id || '',
+                              image_url: image.image_url || '',
+                              alt_text: image.alt_text || '',
+                              sort_order: Number(image.sort_order || 0),
+                              media_type: image.media_type || 'image',
+                              use_case: image.use_case || 'catalog',
+                              is_primary: Boolean(image.is_primary),
+                            })
+                          }}
+                          className={`w-full rounded-3xl border p-4 text-left transition ${isSelected
+                              ? 'border-[#143047] bg-[#eef4f8]'
+                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                            }`}
+                        >
+                          <div className="flex items-start gap-4">
+                            {image.media_type === 'image' ? (
+                              <img
+                                src={image.image_url}
+                                alt={image.alt_text || 'Imagen'}
+                                className="h-20 w-20 flex-shrink-0 rounded-2xl object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-2xl bg-[#f3efe6] text-xs font-semibold text-[#6d7e8b]">
+                                3D
+                              </div>
+                            )}
+
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-[#143047]">
+                                {image.products?.name || 'Producto'}
+                              </p>
+
+                              <p
+                                className="mt-1 max-w-full truncate text-sm text-[#4e6475]"
+                                title={image.image_url}
+                              >
+                                {image.image_url}
+                              </p>
+
+                              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                                <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-[#143047]">
+                                  {image.media_type}
                                 </span>
-                              ) : null}
-                            </div>
-                            <p className="mt-2 text-xs text-[#6d7e8b]">
-                              Alt: {image.alt_text || '—'}
-                            </p>
-                          </div>
-                        </div>
+                                <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-[#143047]">
+                                  {image.use_case || 'sin use_case'}
+                                </span>
+                                <span className="rounded-full bg-[#f8f3ea] px-3 py-1 text-[#143047]">
+                                  Orden {image.sort_order}
+                                </span>
+                                {image.is_primary ? (
+                                  <span className="rounded-full bg-[#ecf8f4] px-3 py-1 text-[#0f6d5f]">
+                                    Principal
+                                  </span>
+                                ) : null}
+                              </div>
 
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              setEditingImageId(image.id)
-                              setImageForm({
-                                product_id: image.product_id || '',
-                                image_url: image.image_url || '',
-                                alt_text: image.alt_text || '',
-                                sort_order: Number(image.sort_order || 0),
-                                media_type: image.media_type || 'image',
-                                use_case: image.use_case || 'catalog',
-                                is_primary: Boolean(image.is_primary),
-                              })
-                            }}
-                            className="rounded-full border border-[#d8cdb8] px-3 py-1 text-sm"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => deleteRow(`/api/admin/product-images/${image.id}`, 'la media')}
-                            className="rounded-full border border-[#efc0b8] px-3 py-1 text-sm text-[#b34f42]"
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      </div>
-                    ))
+                              <p className="mt-2 text-xs text-[#6d7e8b]">
+                                Alt: {image.alt_text || '—'}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })
                   )}
                 </div>
               </div>
             </SectionCard>
           )}
-
           {activeTab === 'orders' && (
             <SectionCard title="Pedidos" subtitle="Seguimiento de estado y control del checkout.">
               <div className="space-y-4">
