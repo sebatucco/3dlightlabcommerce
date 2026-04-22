@@ -61,14 +61,14 @@ function normalizeSkuPrefix(value) {
     .slice(0, 8)
 }
 
-function getMediaDisplayUrl(value, maxLength = 56) {
+function getMediaDisplayUrl(value, maxLength = 42) {
   const raw = String(value || '').trim()
   if (!raw) return ''
 
   if (raw.length <= maxLength) return raw
 
-  const head = raw.slice(0, 28)
-  const tail = raw.slice(-18)
+  const head = raw.slice(0, 20)
+  const tail = raw.slice(-14)
   return `${head}...${tail}`
 }
 
@@ -1047,7 +1047,7 @@ export default function AdminPage() {
                   </div>
                 </form>
 
-                <div className="space-y-3">
+                <div className="min-w-0 space-y-3 overflow-hidden">
                   {products.length === 0 ? (
                     <div className="rounded-3xl border border-[#efe6d5] bg-white p-6 text-center text-[#6d7e8b]">
                       No hay productos activos para administrar.
@@ -1239,7 +1239,7 @@ export default function AdminPage() {
                   </div>
                 </form>
 
-                <div className="space-y-3">
+                <div className="min-w-0 space-y-3 overflow-hidden">
                   {images.length === 0 ? (
                     <div className="rounded-3xl border border-[#efe6d5] bg-white p-6 text-center text-[#6d7e8b]">
                       No hay media cargada todavía.
@@ -1254,8 +1254,8 @@ export default function AdminPage() {
                           type="button"
                           onClick={() => selectImage(image)}
                           className={`w-full overflow-hidden rounded-3xl border p-4 text-left transition ${isSelected
-                              ? 'border-[#143047] bg-[#eef4f8]'
-                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                            ? 'border-[#143047] bg-[#eef4f8]'
+                            : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
                             }`}
                         >
                           <div className="flex items-start gap-4">
@@ -1276,15 +1276,18 @@ export default function AdminPage() {
                                 {image.products?.name || 'Producto'}
                               </p>
 
-                              <div className="mt-1 min-w-0 overflow-hidden">
+                              <div className="mt-1 min-w-0 max-w-full overflow-hidden">
                                 <p
-                                  className="block max-w-full truncate whitespace-nowrap text-sm text-[#4e6475]"
+                                  className="block w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm text-[#4e6475]"
                                   title={image.image_url}
                                 >
-                                  {getMediaDisplayUrl(image.image_url)}
+                                  {getMediaDisplayUrl(image.image_url, 42)}
                                 </p>
 
-                                <p className="mt-1 text-xs text-[#6d7e8b]">
+                                <p
+                                  className="mt-1 block w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#6d7e8b]"
+                                  title={getMediaFileName(image.image_url)}
+                                >
                                   Archivo: {getMediaFileName(image.image_url) || '—'}
                                 </p>
                               </div>
