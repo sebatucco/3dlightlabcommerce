@@ -1100,7 +1100,7 @@ export default function AdminPage() {
               title="ABM de media"
               subtitle="Seleccioná una imagen o modelo para editarlo desde el formulario."
             >
-              <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+              <div className="grid min-w-0 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
                 <form onSubmit={submitImage} className="space-y-4 rounded-3xl bg-[#f8f3ea] p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -1239,7 +1239,7 @@ export default function AdminPage() {
                   </div>
                 </form>
 
-                <div className="min-w-0 space-y-3 overflow-hidden">
+                <div className="min-w-0 max-w-full space-y-3 overflow-hidden">
                   {images.length === 0 ? (
                     <div className="rounded-3xl border border-[#efe6d5] bg-white p-6 text-center text-[#6d7e8b]">
                       No hay media cargada todavía.
@@ -1253,12 +1253,12 @@ export default function AdminPage() {
                           key={image.id}
                           type="button"
                           onClick={() => selectImage(image)}
-                          className={`w-full overflow-hidden rounded-3xl border p-4 text-left transition ${isSelected
-                            ? 'border-[#143047] bg-[#eef4f8]'
-                            : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                          className={`block w-full max-w-full overflow-hidden rounded-3xl border p-4 text-left transition ${isSelected
+                              ? 'border-[#143047] bg-[#eef4f8]'
+                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
                             }`}
                         >
-                          <div className="flex items-start gap-4">
+                          <div className="flex min-w-0 items-start gap-4 overflow-hidden">
                             {image.media_type === 'image' ? (
                               <img
                                 src={resolveMediaPreviewUrl(image.image_url)}
@@ -1271,21 +1271,21 @@ export default function AdminPage() {
                               </div>
                             )}
 
-                            <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-[#143047]">
+                            <div className="min-w-0 max-w-full flex-1 overflow-hidden">
+                              <p className="truncate text-sm font-semibold text-[#143047]">
                                 {image.products?.name || 'Producto'}
                               </p>
 
                               <div className="mt-1 min-w-0 max-w-full overflow-hidden">
                                 <p
-                                  className="block w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm text-[#4e6475]"
+                                  className="block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm text-[#4e6475]"
                                   title={image.image_url}
                                 >
-                                  {getMediaDisplayUrl(image.image_url, 42)}
+                                  {getMediaDisplayUrl(image.image_url)}
                                 </p>
 
                                 <p
-                                  className="mt-1 block w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#6d7e8b]"
+                                  className="mt-1 block w-full max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#6d7e8b]"
                                   title={getMediaFileName(image.image_url)}
                                 >
                                   Archivo: {getMediaFileName(image.image_url) || '—'}
@@ -1309,7 +1309,7 @@ export default function AdminPage() {
                                 ) : null}
                               </div>
 
-                              <p className="mt-2 text-xs text-[#6d7e8b]">
+                              <p className="mt-2 line-clamp-1 text-xs text-[#6d7e8b]">
                                 Alt: {image.alt_text || '—'}
                               </p>
                             </div>
