@@ -60,7 +60,7 @@ export default function AdminPedidosPage() {
             setError('')
             setLoading(true)
 
-            const response = await fetch('/api/orders', { cache: 'no-store' })
+            const response = await fetch('/api/admin/orders', { cache: 'no-store' })
             const data = await response.json()
 
             if (!response.ok) {
