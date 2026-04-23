@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { BarChart3, FolderTree, Image as ImageIcon, LogOut, Mail, Package, ShoppingCart } from 'lucide-react'
+import {
+  BarChart3,
+  FolderTree,
+  Image as ImageIcon,
+  Landmark,
+  LogOut,
+  Mail,
+  Package,
+  ShoppingCart,
+} from 'lucide-react'
 
 const initialCategory = { name: '', slug: '', description: '', sort_order: 0, active: true, sku_prefix: '' }
 const initialProduct = {
@@ -531,7 +540,8 @@ export default function AdminPage() {
     { id: 'categories', label: 'Categorías', icon: FolderTree },
     { id: 'products', label: 'Productos', icon: Package },
     { id: 'images', label: 'Imágenes', icon: ImageIcon },
-    { id: 'orders', label: 'Pedidos', icon: ShoppingCart },
+    { id: 'bank-accounts', label: 'Cuentas bancarias', icon: Landmark },
+    { id: 'orders-route', label: 'Pedidos', icon: ShoppingCart },
     { id: 'contacts', label: 'Contactos', icon: Mail },
   ]
 
@@ -576,10 +586,22 @@ export default function AdminPage() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  if (tab.id === 'orders-route') {
+                    window.location.href = '/admin/pedidos'
+                    return
+                  }
+
+                  if (tab.id === 'bank-accounts') {
+                    window.location.href = '/admin/cuentas-bancarias'
+                    return
+                  }
+
+                  setActiveTab(tab.id)
+                }}
                 className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${activeTab === tab.id
-                  ? 'bg-[#143047] text-white'
-                  : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
+                    ? 'bg-[#143047] text-white'
+                    : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
                   }`}
               >
                 <tab.icon className="h-4 w-4" />
@@ -1254,8 +1276,8 @@ export default function AdminPage() {
                           type="button"
                           onClick={() => selectImage(image)}
                           className={`block w-full max-w-full overflow-hidden rounded-3xl border p-4 text-left transition ${isSelected
-                              ? 'border-[#143047] bg-[#eef4f8]'
-                              : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
+                            ? 'border-[#143047] bg-[#eef4f8]'
+                            : 'border-[#efe6d5] bg-white hover:bg-[#faf7f0]'
                             }`}
                         >
                           <div className="flex min-w-0 items-start gap-4 overflow-hidden">
