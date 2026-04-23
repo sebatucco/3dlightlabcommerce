@@ -537,7 +537,7 @@ export default function AdminPage() {
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { id: 'categories', label: 'Categorías', icon: FolderTree },
+    { id: 'categories-route', label: 'Categorías', icon: FolderTree },
     { id: 'products', label: 'Productos', icon: Package },
     { id: 'images', label: 'Imágenes', icon: ImageIcon },
     { id: 'bank-accounts', label: 'Cuentas bancarias', icon: Landmark },
@@ -587,6 +587,11 @@ export default function AdminPage() {
               <button
                 key={tab.id}
                 onClick={() => {
+                  if (tab.id === 'categories-route') {
+                    window.location.href = '/admin/categorias'
+                    return
+                  }
+
                   if (tab.id === 'orders-route') {
                     window.location.href = '/admin/pedidos'
                     return
@@ -600,8 +605,8 @@ export default function AdminPage() {
                   setActiveTab(tab.id)
                 }}
                 className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${activeTab === tab.id
-                    ? 'bg-[#143047] text-white'
-                    : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
+                  ? 'bg-[#143047] text-white'
+                  : 'bg-[#f8f3ea] text-[#143047] hover:bg-[#eef4f8]'
                   }`}
               >
                 <tab.icon className="h-4 w-4" />
