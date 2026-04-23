@@ -224,14 +224,24 @@ export default function AdminCategoriasPage() {
                         <h1 className="mt-2 text-4xl font-extrabold">Categorías</h1>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={loadCategories}
-                        className="inline-flex items-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047] hover:bg-[#f8f3ea]"
-                    >
-                        <RefreshCw className="h-4 w-4" />
-                        Actualizar
-                    </button>
+                    <div className="flex gap-3">
+                        <button
+                            type="button"
+                            onClick={() => (window.location.href = '/admin')}
+                            className="inline-flex items-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047] hover:bg-[#f8f3ea]"
+                        >
+                            ← Volver
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={loadCategories}
+                            className="inline-flex items-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047] hover:bg-[#f8f3ea]"
+                        >
+                            <RefreshCw className="h-4 w-4" />
+                            Actualizar
+                        </button>
+                    </div>
                 </div>
 
                 {error ? (
@@ -387,8 +397,8 @@ export default function AdminCategoriasPage() {
                                                 <p className="text-lg font-bold text-[#143047]">{category.name}</p>
                                                 <span
                                                     className={`rounded-full px-3 py-1 text-xs font-semibold ${category.active
-                                                            ? 'bg-[#ecf8f4] text-[#0f6d5f]'
-                                                            : 'bg-[#fff1ef] text-[#b44a42]'
+                                                        ? 'bg-[#ecf8f4] text-[#0f6d5f]'
+                                                        : 'bg-[#fff1ef] text-[#b44a42]'
                                                         }`}
                                                 >
                                                     {category.active ? 'Activa' : 'Inactiva'}
