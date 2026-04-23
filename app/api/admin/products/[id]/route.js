@@ -20,6 +20,10 @@ function normalizeSlug(value) {
     .replace(/(^-|-$)/g, '')
 }
 
+function normalizeSku(value) {
+  return String(value || '').trim().toUpperCase()
+}
+
 function toSafeNumber(value, fallback = 0) {
   const num = Number(value)
   return Number.isFinite(num) ? num : fallback
@@ -43,6 +47,7 @@ function buildPayload(body) {
     body?.compare_at_price === '' || body?.compare_at_price == null
       ? null
       : toSafeNumber(body.compare_at_price, 0)
+  const sku = body?.sku ? normalizeSku(body.sku) : null
   const stock = Math.max(0, toSafeInteger(body?.stock, 0))
   const featured = Boolean(body?.featured)
   const active = body?.active !== false
@@ -55,6 +60,7 @@ function buildPayload(body) {
     description,
     price,
     compare_at_price,
+    sku,
     stock,
     featured,
     active,
@@ -155,6 +161,27 @@ export async function PUT(request, context) {
         { error: 'Ya existe otro producto con ese slug' },
         { status: 400 }
       )
+    }
+
+    if (updates.sku) {
+      const { data: skuRow, error: skuError } = await supabase
+        .from('products')
+        .select('id')
+        .eq('sku', updates.sku)
+        .neq('id', id)
+        .is('deleted_at', null)
+        .maybeSingle()
+
+      if (skuError) {
+        return NextResponse.json({ error: skuError.message }, { status: 500 })
+      }
+
+      if (skuRow) {
+        return NextResponse.json(
+          { error: 'Ya existe otro producto con ese SKU' },
+          { status: 400 }
+        )
+      }
     }
 
     const { data, error } = await supabase

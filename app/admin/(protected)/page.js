@@ -538,7 +538,7 @@ export default function AdminPage() {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'categories-route', label: 'Categorías', icon: FolderTree },
-    { id: 'products', label: 'Productos', icon: Package },
+    { id: 'products-route', label: 'Productos', icon: Package },
     { id: 'images', label: 'Imágenes', icon: ImageIcon },
     { id: 'bank-accounts', label: 'Cuentas bancarias', icon: Landmark },
     { id: 'orders-route', label: 'Pedidos', icon: ShoppingCart },
@@ -589,6 +589,11 @@ export default function AdminPage() {
                 onClick={() => {
                   if (tab.id === 'categories-route') {
                     window.location.href = '/admin/categorias'
+                    return
+                  }
+
+                  if (tab.id === 'products-route') {
+                    window.location.href = '/admin/productos'
                     return
                   }
 
