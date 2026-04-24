@@ -642,6 +642,7 @@ export async function POST(request) {
             products: [],
         })
     } catch (error) {
+        console.log('ERROR CHAT:', error)
         return NextResponse.json(
             {
                 reply:
