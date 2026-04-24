@@ -441,20 +441,17 @@ function buildBankResponse(accounts) {
     return `Podés pagar por transferencia a estas cuentas activas:\n\n${lines.join('\n\n')}\n\nDespués de transferir, guardá el comprobante para enviarlo o cargarlo en el pedido.`
 }
 
-async function interpretWithAI(message) {
-
-    if (intent === 'general') {
-        const ai = await interpretWithAI(message)
-
-        if (ai?.intent && ai.intent !== 'general') {
-            intent = ai.intent
-            aiQuery = ai.query || message
-            source = 'ai' // 👈 ACA SABÉS QUE USÓ IA
-        }
+// borrar
+async function safeParseAIJson(content) {
+    try {
+        const clean = String(content || '').match(/\{[\s\S]*\}/)?.[0]
+        return clean ? JSON.parse(clean) : null
+    } catch {
+        return null
     }
+}
 
-
-    // 1. Intentar con GROQ (rápido)
+async function interpretWithAI(message) {
     try {
         if (process.env.GROQ_API_KEY) {
             const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -480,11 +477,15 @@ async function interpretWithAI(message) {
             const data = await res.json()
             const content = data?.choices?.[0]?.message?.content
 
-            if (content) return JSON.parse(content)
-        }
-    } catch { }
+            console.log('IA RAW GROQ:', content)
 
-    // 2. Fallback a OpenAI
+            const parsed = await safeParseAIJson(content)
+            if (parsed) return parsed
+        }
+    } catch (error) {
+        console.log('GROQ ERROR:', error?.message || error)
+    }
+
     try {
         if (process.env.OPENAI_API_KEY) {
             const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -510,9 +511,14 @@ async function interpretWithAI(message) {
             const data = await res.json()
             const content = data?.choices?.[0]?.message?.content
 
-            if (content) return JSON.parse(content)
+            console.log('IA RAW OPENAI:', content)
+
+            const parsed = await safeParseAIJson(content)
+            if (parsed) return parsed
         }
-    } catch { }
+    } catch (error) {
+        console.log('OPENAI ERROR:', error?.message || error)
+    }
 
     return null
 }
@@ -526,7 +532,7 @@ export async function POST(request) {
         const supabase = createAdminSupabaseClient()
         let intent = detectIntent(message)
         let aiQuery = message
-
+        // borrar
         let source = 'local'
 
         // solo si tu lógica no entiende bien
@@ -536,10 +542,11 @@ export async function POST(request) {
             if (ai?.intent && ai.intent !== 'general') {
                 intent = ai.intent
                 aiQuery = ai.query || message
+                source = 'ai' // 👈 ACA SABÉS QUE USÓ IA
             }
         }
 
-        console.log('CHAT →', source)
+        console.log('CHAT →', source, '| intent:', intent)
 
         if (!message) {
             return NextResponse.json(
