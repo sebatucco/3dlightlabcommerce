@@ -539,7 +539,7 @@ export default function AdminPage() {
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'categories-route', label: 'Categorías', icon: FolderTree },
     { id: 'products-route', label: 'Productos', icon: Package },
-    { id: 'images', label: 'Imágenes', icon: ImageIcon },
+    { id: 'images-route', label: 'Imágenes', icon: ImageIcon },
     { id: 'bank-accounts', label: 'Cuentas bancarias', icon: Landmark },
     { id: 'orders-route', label: 'Pedidos', icon: ShoppingCart },
     { id: 'contacts', label: 'Contactos', icon: Mail },
@@ -594,6 +594,11 @@ export default function AdminPage() {
 
                   if (tab.id === 'products-route') {
                     window.location.href = '/admin/productos'
+                    return
+                  }
+
+                  if (tab.id === 'images-route') {
+                    window.location.href = '/admin/imagenes'
                     return
                   }
 
