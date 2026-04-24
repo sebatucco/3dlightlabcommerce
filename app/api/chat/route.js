@@ -77,6 +77,21 @@ function detectIntent(message) {
         return 'buy'
     }
 
+    if (
+        text.includes('como compro') ||
+        text.includes('cómo compro') ||
+        text.includes('como comprar') ||
+        text.includes('cómo comprar') ||
+        text.includes('forma de pago') ||
+        text.includes('como pago') ||
+        text.includes('cómo pago') ||
+        text.includes('pago') ||
+        text.includes('envio') ||
+        text.includes('envío')
+    ) {
+        return 'checkout_help'
+    }
+
     return 'general'
 }
 
@@ -334,11 +349,26 @@ function normalizeProductForChat(product) {
         ...product,
         image,
         image_url: image,
+        url: product.slug ? `/producto/${product.slug}` : `/producto/${product.id}`,
+        product_url: product.slug ? `/producto/${product.slug}` : `/producto/${product.id}`,
     }
 }
-
 function formatPrice(value) {
     return `$ ${Number(value || 0).toLocaleString('es-AR')}`
+}
+
+function getLastProductFromMessages(messages) {
+    if (!Array.isArray(messages)) return null
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const item = messages[i]
+
+        if (Array.isArray(item?.products) && item.products.length > 0) {
+            return item.products[0]
+        }
+    }
+
+    return null
 }
 
 function buildProductResponse(products) {
@@ -415,6 +445,8 @@ export async function POST(request) {
     try {
         const body = await request.json().catch(() => ({}))
         const message = String(body?.message || '').trim()
+        const messages = Array.isArray(body?.messages) ? body.messages : []
+        const lastProduct = getLastProductFromMessages(messages)
 
         if (!message) {
             return NextResponse.json(
@@ -482,6 +514,33 @@ export async function POST(request) {
                 reply: saved
                     ? 'Perfecto, dejé registrada tu consulta. Si querés una respuesta más rápida, también podés escribirnos por WhatsApp desde el botón del sitio.'
                     : 'Puedo ayudarte. Pasame tu nombre y WhatsApp o escribinos directamente por el botón de WhatsApp.',
+                products: [],
+            })
+        }
+
+        if (intent === 'checkout_help') {
+            if (lastProduct) {
+                return NextResponse.json({
+                    reply:
+                        `Para comprar ${lastProduct.name}, abrí la tarjeta del producto y entrá al detalle.\n\n` +
+                        'Desde ahí podés:\n' +
+                        '1. Agregarlo al carrito\n' +
+                        '2. Ir al checkout\n' +
+                        '3. Elegir Mercado Pago o transferencia bancaria\n\n' +
+                        'Si elegís transferencia, el sistema te muestra las cuentas activas para pagar.',
+                    products: [lastProduct],
+                })
+            }
+
+            return NextResponse.json({
+                reply:
+                    'Podés comprar directamente desde la tienda:\n\n' +
+                    '1. Abrí el producto que te interesa\n' +
+                    '2. Agregalo al carrito\n' +
+                    '3. Elegí forma de pago:\n' +
+                    '• Tarjeta / Mercado Pago\n' +
+                    '• Transferencia bancaria\n\n' +
+                    'También podés consultar por envío o pedirme ayuda para elegir un producto.',
                 products: [],
             })
         }

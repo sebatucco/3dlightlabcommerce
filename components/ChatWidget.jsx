@@ -102,9 +102,10 @@ export default function ChatWidget() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: trimmed,
-                    messages: nextMessages.map((msg) => ({
+                    messages: nextMessages.slice(-6).map((msg) => ({
                         role: msg.role,
                         content: msg.content,
+                        products: msg.products || [],
                     })),
                 }),
             })
@@ -186,8 +187,8 @@ export default function ChatWidget() {
                                 <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                     <div
                                         className={`max-w-[88%] rounded-3xl px-3 py-2.5 text-sm leading-6 sm:max-w-[85%] sm:px-4 sm:py-3 ${message.role === 'user'
-                                                ? 'bg-[hsl(var(--foreground))] text-[hsl(var(--primary-foreground))]'
-                                                : 'border border-[#e9dfd0] bg-white text-[#143047]'
+                                            ? 'bg-[hsl(var(--foreground))] text-[hsl(var(--primary-foreground))]'
+                                            : 'border border-[#e9dfd0] bg-white text-[#143047]'
                                             }`}
                                     >
                                         {message.content}
