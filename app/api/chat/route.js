@@ -457,17 +457,6 @@ export async function POST(request) {
             })
         }
 
-        if (intent === 'lead') {
-            const saved = await saveLead(supabase, message)
-
-            return NextResponse.json({
-                reply: saved
-                    ? 'Perfecto, dejé registrada tu consulta. Si querés una respuesta más rápida, también podés escribirnos por WhatsApp desde el botón del sitio.'
-                    : 'Puedo ayudarte. Pasame tu nombre y WhatsApp o escribinos directamente por el botón de WhatsApp.',
-                products: [],
-            })
-        }
-
         if (intent === 'buy') {
             const products = await searchProducts(supabase, message)
 
@@ -486,7 +475,16 @@ export async function POST(request) {
             })
         }
 
-        const featuredProducts = await searchProducts(supabase, 'lampara')
+        if (intent === 'lead') {
+            const saved = await saveLead(supabase, message)
+
+            return NextResponse.json({
+                reply: saved
+                    ? 'Perfecto, dejé registrada tu consulta. Si querés una respuesta más rápida, también podés escribirnos por WhatsApp desde el botón del sitio.'
+                    : 'Puedo ayudarte. Pasame tu nombre y WhatsApp o escribinos directamente por el botón de WhatsApp.',
+                products: [],
+            })
+        }
 
         return NextResponse.json({
             reply:
