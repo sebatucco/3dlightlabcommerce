@@ -441,12 +441,105 @@ function buildBankResponse(accounts) {
     return `Podés pagar por transferencia a estas cuentas activas:\n\n${lines.join('\n\n')}\n\nDespués de transferir, guardá el comprobante para enviarlo o cargarlo en el pedido.`
 }
 
+async function interpretWithAI(message) {
+
+    if (intent === 'general') {
+        const ai = await interpretWithAI(message)
+
+        if (ai?.intent && ai.intent !== 'general') {
+            intent = ai.intent
+            aiQuery = ai.query || message
+            source = 'ai' // 👈 ACA SABÉS QUE USÓ IA
+        }
+    }
+
+
+    // 1. Intentar con GROQ (rápido)
+    try {
+        if (process.env.GROQ_API_KEY) {
+            const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: 'llama3-70b-8192',
+                    temperature: 0.1,
+                    messages: [
+                        {
+                            role: 'system',
+                            content:
+                                'Sos un clasificador para un ecommerce de lámparas. Devolvé SOLO JSON válido con: {"intent":"products|buy|bank_accounts|order_status|checkout_help|lead|general","query":"texto limpio"}',
+                        },
+                        { role: 'user', content: message },
+                    ],
+                }),
+            })
+
+            const data = await res.json()
+            const content = data?.choices?.[0]?.message?.content
+
+            if (content) return JSON.parse(content)
+        }
+    } catch { }
+
+    // 2. Fallback a OpenAI
+    try {
+        if (process.env.OPENAI_API_KEY) {
+            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    temperature: 0.1,
+                    messages: [
+                        {
+                            role: 'system',
+                            content:
+                                'Sos un clasificador para un ecommerce. Devolvé SOLO JSON válido con: {"intent":"products|buy|bank_accounts|order_status|checkout_help|lead|general","query":"texto limpio"}',
+                        },
+                        { role: 'user', content: message },
+                    ],
+                }),
+            })
+
+            const data = await res.json()
+            const content = data?.choices?.[0]?.message?.content
+
+            if (content) return JSON.parse(content)
+        }
+    } catch { }
+
+    return null
+}
+
 export async function POST(request) {
     try {
         const body = await request.json().catch(() => ({}))
         const message = String(body?.message || '').trim()
         const messages = Array.isArray(body?.messages) ? body.messages : []
         const lastProduct = getLastProductFromMessages(messages)
+        const supabase = createAdminSupabaseClient()
+        let intent = detectIntent(message)
+        let aiQuery = message
+
+        let source = 'local'
+
+        // solo si tu lógica no entiende bien
+        if (intent === 'general') {
+            const ai = await interpretWithAI(message)
+
+            if (ai?.intent && ai.intent !== 'general') {
+                intent = ai.intent
+                aiQuery = ai.query || message
+            }
+        }
+
+        console.log('CHAT →', source)
 
         if (!message) {
             return NextResponse.json(
@@ -458,11 +551,9 @@ export async function POST(request) {
             )
         }
 
-        const supabase = createAdminSupabaseClient()
-        const intent = detectIntent(message)
 
         if (intent === 'products') {
-            const products = await searchProducts(supabase, message)
+            const products = await searchProducts(supabase, aiQuery)
             const response = buildProductResponse(products)
 
             return NextResponse.json({
