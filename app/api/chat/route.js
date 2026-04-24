@@ -144,14 +144,14 @@ async function searchProducts(supabase, message) {
     const best = matched[0]
 
     if (best && best._score >= 70) {
-        return [best]
+        return [normalizeProductForChat(best)]
     }
 
     if (matched.length > 0) {
-        return matched.slice(0, 4)
+        return matched.slice(0, 4).map(normalizeProductForChat)
     }
 
-    return products.slice(0, 4)
+    return products.slice(0, 4).map(normalizeProductForChat)
 }
 
 async function getActiveBankAccounts(supabase) {
@@ -184,6 +184,28 @@ async function saveLead(supabase, message) {
     return !error
 }
 
+function normalizeProductForChat(product) {
+    const image =
+        product.product_images?.find(
+            (item) => item.media_type === 'image' && item.is_primary
+        )?.image_url ||
+        product.product_images?.find(
+            (item) => item.media_type === 'image'
+        )?.image_url ||
+        product.image ||
+        ''
+
+    return {
+        ...product,
+        image,
+        image_url: image,
+    }
+}
+
+function formatPrice(value) {
+    return `$ ${Number(value || 0).toLocaleString('es-AR')}`
+}
+
 function buildProductResponse(products) {
     if (!products.length) {
         return {
@@ -193,9 +215,42 @@ function buildProductResponse(products) {
         }
     }
 
+    if (products.length === 1) {
+        const product = products[0]
+        const stock = Number(product.stock || 0)
+        const hasStock = stock > 0
+
+        return {
+            reply: [
+                `Sí, tenemos ${product.name}.`,
+                product.price != null ? `Precio: ${formatPrice(product.price)}.` : null,
+                product.compare_at_price
+                    ? `Antes: ${formatPrice(product.compare_at_price)}.`
+                    : null,
+                `Stock: ${hasStock ? `${stock} unidad${stock === 1 ? '' : 'es'} disponible${stock === 1 ? '' : 's'}` : 'sin stock disponible por ahora'}.`,
+                product.short_description ? product.short_description : null,
+                hasStock
+                    ? 'Podés abrir el producto desde la tarjeta para ver más detalles o avanzar con la compra.'
+                    : 'Si querés, podés dejarnos tu consulta y te avisamos cuando vuelva a estar disponible.',
+            ]
+                .filter(Boolean)
+                .join('\n'),
+            products: [product],
+        }
+    }
+
+    const summary = products
+        .slice(0, 3)
+        .map((product) => {
+            const stock = Number(product.stock || 0)
+            return `• ${product.name} — ${formatPrice(product.price)} — ${stock > 0 ? `stock ${stock}` : 'sin stock'
+                }`
+        })
+        .join('\n')
+
     return {
         reply:
-            'Encontré estas opciones que pueden interesarte. Podés abrir el producto para ver más detalles o consultarme por stock, precio o forma de pago.',
+            `Encontré estas opciones que pueden interesarte:\n\n${summary}\n\nAbrí una tarjeta para ver el detalle o escribime el nombre exacto del producto para enfocarme en uno solo.`,
         products,
     }
 }
