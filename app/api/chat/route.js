@@ -441,7 +441,6 @@ function buildBankResponse(accounts) {
     return `Podés pagar por transferencia a estas cuentas activas:\n\n${lines.join('\n\n')}\n\nDespués de transferir, guardá el comprobante para enviarlo o cargarlo en el pedido.`
 }
 
-// borrar
 async function safeParseAIJson(content) {
     try {
         const clean = String(content || '').match(/\{[\s\S]*\}/)?.[0]
@@ -461,7 +460,7 @@ async function interpretWithAI(message) {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    model: 'llama3-70b-8192',
+                    model: 'llama-3.3-70b-versatile',
                     temperature: 0.1,
                     messages: [
                         {
@@ -563,9 +562,18 @@ export async function POST(request) {
             const products = await searchProducts(supabase, aiQuery)
             const response = buildProductResponse(products)
 
+            // return NextResponse.json({
+            //    reply: response.reply,
+            //   products: response.products,
+            //})
             return NextResponse.json({
                 reply: response.reply,
                 products: response.products,
+                debug: {
+                    source,
+                    intent,
+                    aiQuery,
+                },
             })
         }
 
@@ -576,6 +584,7 @@ export async function POST(request) {
                 reply: buildBankResponse(accounts),
                 products: [],
             })
+
         }
 
         if (intent === 'order_status') {
@@ -585,68 +594,125 @@ export async function POST(request) {
                 reply: orderResult.reply,
                 products: [],
             })
+
         }
 
         if (intent === 'buy') {
             const products = await searchProducts(supabase, message)
 
             if (!products.length) {
+                //  return NextResponse.json({
+                //      reply:
+                //          'Puedo ayudarte a encontrar el producto que buscás. Decime el nombre o describime qué necesitás.',
+                //      products: [],
+                //  })
                 return NextResponse.json({
-                    reply:
-                        'Puedo ayudarte a encontrar el producto que buscás. Decime el nombre o describime qué necesitás.',
-                    products: [],
+                    reply: response.reply,
+                    products: response.products,
+                    debug: {
+                        source,
+                        intent,
+                        aiQuery,
+                    },
                 })
             }
 
+            //  return NextResponse.json({
+            //      reply:
+            //          'Perfecto, podés comprar este producto directamente desde la tienda. Si querés te guío con el pago o envío.',
+            //      products,
+            //  })
             return NextResponse.json({
-                reply:
-                    'Perfecto, podés comprar este producto directamente desde la tienda. Si querés te guío con el pago o envío.',
-                products,
+                reply: response.reply,
+                products: response.products,
+                debug: {
+                    source,
+                    intent,
+                    aiQuery,
+                },
             })
         }
 
         if (intent === 'lead') {
             const saved = await saveLead(supabase, message)
 
+            // return NextResponse.json({
+            //      reply: saved
+            //         ? 'Perfecto, dejé registrada tu consulta. Si querés una respuesta más rápida, también podés escribirnos por WhatsApp desde el botón del sitio.'
+            //         : 'Puedo ayudarte. Pasame tu nombre y WhatsApp o escribinos directamente por el botón de WhatsApp.',
+            //     products: [],
+            // })
+
             return NextResponse.json({
-                reply: saved
-                    ? 'Perfecto, dejé registrada tu consulta. Si querés una respuesta más rápida, también podés escribirnos por WhatsApp desde el botón del sitio.'
-                    : 'Puedo ayudarte. Pasame tu nombre y WhatsApp o escribinos directamente por el botón de WhatsApp.',
-                products: [],
+                reply: response.reply,
+                products: response.products,
+                debug: {
+                    source,
+                    intent,
+                    aiQuery,
+                },
             })
+
         }
 
         if (intent === 'checkout_help') {
             if (lastProduct) {
+                // return NextResponse.json({
+                //      reply:
+                //          `Para comprar ${lastProduct.name}, abrí la tarjeta del producto y entrá al detalle.\n\n` +
+                //          'Desde ahí podés:\n' +
+                //          '1. Agregarlo al carrito\n' +
+                //          '2. Ir al checkout\n' +
+                //          '3. Elegir Mercado Pago o transferencia bancaria\n\n' +
+                //          'Si elegís transferencia, el sistema te muestra las cuentas activas para pagar.',
+                //     products: [lastProduct],
+                // })
                 return NextResponse.json({
-                    reply:
-                        `Para comprar ${lastProduct.name}, abrí la tarjeta del producto y entrá al detalle.\n\n` +
-                        'Desde ahí podés:\n' +
-                        '1. Agregarlo al carrito\n' +
-                        '2. Ir al checkout\n' +
-                        '3. Elegir Mercado Pago o transferencia bancaria\n\n' +
-                        'Si elegís transferencia, el sistema te muestra las cuentas activas para pagar.',
-                    products: [lastProduct],
+                    reply: response.reply,
+                    products: response.products,
+                    debug: {
+                        source,
+                        intent,
+                        aiQuery,
+                    },
                 })
             }
 
+            //return NextResponse.json({
+            //    reply:
+            //        'Podés comprar directamente desde la tienda:\n\n' +
+            //        '1. Abrí el producto que te interesa\n' +
+            //        '2. Agregalo al carrito\n' +
+            //        '3. Elegí forma de pago:\n' +
+            //        '• Tarjeta / Mercado Pago\n' +
+            //        '• Transferencia bancaria\n\n' +
+            //        'También podés consultar por envío o pedirme ayuda para elegir un producto.',
+            //    products: [],
+            //})
             return NextResponse.json({
-                reply:
-                    'Podés comprar directamente desde la tienda:\n\n' +
-                    '1. Abrí el producto que te interesa\n' +
-                    '2. Agregalo al carrito\n' +
-                    '3. Elegí forma de pago:\n' +
-                    '• Tarjeta / Mercado Pago\n' +
-                    '• Transferencia bancaria\n\n' +
-                    'También podés consultar por envío o pedirme ayuda para elegir un producto.',
-                products: [],
+                reply: response.reply,
+                products: response.products,
+                debug: {
+                    source,
+                    intent,
+                    aiQuery,
+                },
             })
         }
 
+        //return NextResponse.json({
+        //    reply:
+        //        'Hola, soy el asistente de 3DLightLab. Puedo ayudarte a buscar productos, consultar formas de pago, ver datos de transferencia, consultar el estado de un pedido o dejar registrada una consulta comercial. ¿Qué estás buscando?',
+        //    products: [],
+        //})
         return NextResponse.json({
-            reply:
-                'Hola, soy el asistente de 3DLightLab. Puedo ayudarte a buscar productos, consultar formas de pago, ver datos de transferencia, consultar el estado de un pedido o dejar registrada una consulta comercial. ¿Qué estás buscando?',
-            products: [],
+            reply: response.reply,
+            products: response.products,
+            debug: {
+                source,
+                intent,
+                aiQuery,
+            },
         })
     } catch (error) {
         console.log('ERROR CHAT:', error)
