@@ -1,40 +1,9 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminSupabaseClient } from '@/lib/admin-supabase'
 
-export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
-const STORE_CONTEXT = `
-Sos el asistente comercial de 3DLightLab, una tienda de lámparas y objetos decorativos impresos en 3D.
-Tu objetivo es ayudar a potenciales clientes a comprar.
-
-Reglas:
-- Respondé en español.
-- Sé cálido, claro y breve.
-- No inventes precios, stock ni datos concretos.
-- Si te paso productos encontrados en base de datos, usá SOLO esos datos para hablar de precios y stock.
-- Si no hay coincidencias claras, decí que no encontraste una coincidencia exacta y sugerí consultar por WhatsApp.
-- Respondé como un vendedor útil: recomendá opciones concretas cuando existan.
-- Si el usuario pide recomendaciones, sugerí hasta 3 productos relevantes.
-- No hables de política, medicina ni temas ajenos a la tienda.
-`
-
-const MAX_MESSAGE_LENGTH = 1200
-const MAX_HISTORY_MESSAGES = 10
-const RATE_LIMIT_WINDOW_MS = 60 * 1000
-const RATE_LIMIT_MAX_REQUESTS = 12
-
-function getSupabaseClient() {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-    if (!url || !anonKey) return null
-
-    return createClient(url, anonKey, {
-        auth: { persistSession: false, autoRefreshToken: false },
-    })
-}
-
-function normalizeText(value) {
+function normalize(value) {
     return String(value || '')
         .toLowerCase()
         .normalize('NFD')
@@ -42,55 +11,68 @@ function normalizeText(value) {
         .trim()
 }
 
-function maybeProductQuestion(message) {
-    const text = normalizeText(message)
+function extractPhone(text) {
+    const match = String(text || '').match(/(\+?\d[\d\s().-]{7,}\d)/)
+    return match ? match[1].trim() : ''
+}
 
-    return (
-        text.includes('precio') ||
-        text.includes('stock') ||
-        text.includes('cuesta') ||
-        text.includes('sale') ||
-        text.includes('tenes') ||
-        text.includes('tienen') ||
-        text.includes('disponible') ||
-        text.includes('lampara') ||
+function extractEmail(text) {
+    const match = String(text || '').match(/[^\s@]+@[^\s@]+\.[^\s@]+/)
+    return match ? match[0].trim().toLowerCase() : ''
+}
+
+function detectIntent(message) {
+    const text = normalize(message)
+
+    if (
+        text.includes('transferencia') ||
+        text.includes('cbu') ||
+        text.includes('alias') ||
+        text.includes('cuenta bancaria') ||
+        text.includes('como pago')
+    ) {
+        return 'bank_accounts'
+    }
+
+    if (
+        text.includes('pedido') ||
+        text.includes('orden') ||
+        text.includes('estado') ||
+        text.includes('seguimiento')
+    ) {
+        return 'order_status'
+    }
+
+    if (
+        text.includes('asesor') ||
+        text.includes('contact') ||
+        text.includes('presupuesto') ||
+        text.includes('me interesa') ||
+        text.includes('quiero comprar') ||
+        text.includes('hablar') ||
+        text.includes('whatsapp')
+    ) {
+        return 'lead'
+    }
+
+    if (
         text.includes('producto') ||
-        text.includes('recomendas') ||
-        text.includes('recomiendes') ||
-        text.includes('quiero') ||
-        text.includes('busco')
-    )
+        text.includes('lampara') ||
+        text.includes('lámpara') ||
+        text.includes('catalogo') ||
+        text.includes('catálogo') ||
+        text.includes('precio') ||
+        text.includes('stock')
+    ) {
+        return 'products'
+    }
+
+    return 'general'
 }
 
-function buildSearchTerms(message) {
-    const text = normalizeText(message)
-
-    return text
-        .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
-        .split(/\s+/)
-        .filter((word) => word.length >= 3)
-        .slice(0, 10)
-}
-
-function getCatalogImage(product) {
-    const media = Array.isArray(product?.product_images) ? [...product.product_images] : []
-    media.sort((a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0))
-
-    const image =
-        media.find((item) => item?.media_type === 'image' && item?.use_case === 'catalog') ||
-        media.find((item) => item?.media_type === 'image' && item?.is_primary === true) ||
-        media.find((item) => item?.media_type === 'image') ||
-        null
-
-    return image?.image_url || '/placeholder.jpg'
-}
-
-async function findRelevantProducts(message) {
-    const supabase = getSupabaseClient()
-    if (!supabase) return []
-
-    const terms = buildSearchTerms(message)
-    if (terms.length === 0) return []
+async function searchProducts(supabase, message) {
+    const rawMessage = String(message || '').trim()
+    const text = normalize(rawMessage)
 
     const { data, error } = await supabase
         .from('products')
@@ -102,330 +84,215 @@ async function findRelevantProducts(message) {
       description,
       price,
       compare_at_price,
+      sku,
       stock,
-      featured,
       active,
-      product_images (
-        id,
-        image_url,
-        alt_text,
-        sort_order,
-        media_type,
-        use_case,
-        is_primary
-      )
+      featured,
+      categories(id,name,slug),
+      product_images(id,image_url,alt_text,sort_order,media_type,use_case,is_primary)
     `)
+        .is('deleted_at', null)
         .eq('active', true)
-        .limit(24)
+        .order('featured', { ascending: false })
+        .order('created_at', { ascending: false })
 
-    if (error || !Array.isArray(data)) return []
+    if (error || !Array.isArray(data)) {
+        return []
+    }
 
-    return data
-        .map((product) => {
-            const haystack = normalizeText(
-                `${product.name} ${product.slug || ''} ${product.short_description || ''} ${product.description || ''}`
-            )
+    const products = data.map((product) => {
+        const productName = normalize(product.name)
+        const productSlug = normalize(product.slug)
+        const productSku = normalize(product.sku)
+        const categoryName = normalize(product.categories?.name)
+        const shortDescription = normalize(product.short_description)
+        const description = normalize(product.description)
 
-            let score = 0
-            for (const term of terms) {
-                if (haystack.includes(term)) score += 1
-            }
+        let score = 0
 
-            if (product.featured) score += 0.25
+        if (productName === text) score += 100
+        if (productSlug === text) score += 90
+        if (productSku === text) score += 90
 
-            return { product, score }
-        })
-        .filter((item) => item.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3)
-        .map(({ product }) => ({
-            id: product.id,
-            name: product.name,
-            slug: product.slug || product.id,
-            short_description: product.short_description || '',
-            price: Number(product.price || 0),
-            compare_at_price:
-                product.compare_at_price == null ? null : Number(product.compare_at_price),
-            stock: Number(product.stock ?? 0),
-            image_url: getCatalogImage(product),
-        }))
+        if (productName.includes(text)) score += 70
+        if (text.includes(productName)) score += 65
+
+        if (productSlug.includes(text)) score += 50
+        if (productSku.includes(text)) score += 50
+        if (categoryName.includes(text)) score += 25
+        if (shortDescription.includes(text)) score += 15
+        if (description.includes(text)) score += 10
+
+        const words = text.split(/\s+/).filter((word) => word.length >= 3)
+
+        for (const word of words) {
+            if (productName.includes(word)) score += 12
+            if (productSlug.includes(word)) score += 8
+            if (productSku.includes(word)) score += 8
+            if (categoryName.includes(word)) score += 5
+            if (shortDescription.includes(word)) score += 3
+            if (description.includes(word)) score += 2
+        }
+
+        return { ...product, _score: score }
+    })
+
+    const matched = products
+        .filter((product) => product._score > 0)
+        .sort((a, b) => b._score - a._score)
+
+    const best = matched[0]
+
+    if (best && best._score >= 70) {
+        return [best]
+    }
+
+    if (matched.length > 0) {
+        return matched.slice(0, 4)
+    }
+
+    return products.slice(0, 4)
 }
 
-function buildProductContext(products) {
-    if (!products.length) return ''
+async function getActiveBankAccounts(supabase) {
+    const { data, error } = await supabase
+        .from('bank_accounts')
+        .select('bank_name, holder_name, cbu, alias, cuit, account_type, sort_order')
+        .eq('active', true)
+        .eq('deleted', false)
+        .order('sort_order', { ascending: true })
 
-    const lines = products.map((product, index) => {
+    if (error) return []
+    return Array.isArray(data) ? data : []
+}
+
+async function saveLead(supabase, message) {
+    const phone = extractPhone(message)
+    const email = extractEmail(message)
+
+    const payload = {
+        name: 'Lead desde chatbot',
+        email: email || null,
+        phone: phone || null,
+        reason: 'chatbot',
+        product: null,
+        message: String(message || '').trim(),
+    }
+
+    const { error } = await supabase.from('contacts').insert(payload)
+
+    return !error
+}
+
+function buildProductResponse(products) {
+    if (!products.length) {
+        return {
+            reply:
+                'No encontré productos exactos con esa búsqueda, pero puedo ayudarte a elegir una lámpara según el ambiente, tamaño o estilo que buscás.',
+            products: [],
+        }
+    }
+
+    return {
+        reply:
+            'Encontré estas opciones que pueden interesarte. Podés abrir el producto para ver más detalles o consultarme por stock, precio o forma de pago.',
+        products,
+    }
+}
+
+function buildBankResponse(accounts) {
+    if (!accounts.length) {
+        return 'Por el momento no hay cuentas bancarias activas para mostrar. Podés escribirnos por WhatsApp y te pasamos los datos de pago.'
+    }
+
+    const lines = accounts.map((account, index) => {
         return [
-            `Producto ${index + 1}:`,
-            `- Nombre: ${product.name}`,
-            `- Slug: ${product.slug}`,
-            `- Precio: ${product.price}`,
-            `- Precio anterior: ${product.compare_at_price ?? 'sin dato'}`,
-            `- Stock: ${product.stock}`,
-            `- Descripción breve: ${product.short_description || 'sin dato'}`,
-        ].join('\n')
+            `Cuenta ${index + 1}`,
+            `Banco: ${account.bank_name}`,
+            `Titular: ${account.holder_name}`,
+            account.alias ? `Alias: ${account.alias}` : null,
+            account.cbu ? `CBU/CVU: ${account.cbu}` : null,
+            account.cuit ? `CUIT: ${account.cuit}` : null,
+        ]
+            .filter(Boolean)
+            .join('\n')
     })
 
-    return `\n\nProductos encontrados en base de datos:\n${lines.join('\n\n')}`
+    return `Podés pagar por transferencia a estas cuentas activas:\n\n${lines.join('\n\n')}\n\nDespués de transferir, guardá el comprobante para enviarlo o cargarlo en el pedido.`
 }
 
-function buildInput(message, messages = [], productContext = '') {
-    const conversation = Array.isArray(messages)
-        ? messages
-            .filter(
-                (m) =>
-                    m &&
-                    typeof m.content === 'string' &&
-                    (m.role === 'user' || m.role === 'assistant')
-            )
-            .slice(-MAX_HISTORY_MESSAGES)
-            .map((m) => ({
-                role: m.role,
-                content: String(m.content).trim().slice(0, MAX_MESSAGE_LENGTH),
-            }))
-        : []
-
-    return [
-        {
-            role: 'system',
-            content: `${STORE_CONTEXT}${productContext}`,
-        },
-        ...conversation,
-        {
-            role: 'user',
-            content: String(message).trim().slice(0, MAX_MESSAGE_LENGTH),
-        },
-    ]
-}
-
-async function callOpenAI(input) {
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) {
-        throw new Error('Falta OPENAI_API_KEY')
-    }
-
-    const response = await fetch('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-            model: 'gpt-4.1-mini',
-            input,
-        }),
-    })
-
-    const data = await response.json().catch(() => ({}))
-
-    if (!response.ok) {
-        const err = new Error(data?.error?.message || 'Error al consultar OpenAI')
-        err.provider = 'openai'
-        err.status = response.status
-        err.code = data?.error?.code || null
-        err.details = data
-        throw err
-    }
-
-    const reply = data?.output_text?.trim()
-
-    if (!reply) {
-        const err = new Error('OpenAI no devolvió texto de respuesta')
-        err.provider = 'openai'
-        err.status = 500
-        err.code = 'empty_response'
-        err.details = data
-        throw err
-    }
-
-    return {
-        provider: 'openai',
-        reply,
-    }
-}
-
-async function callGroq(input) {
-    const apiKey = process.env.GROQ_API_KEY
-    if (!apiKey) {
-        throw new Error('Falta GROQ_API_KEY')
-    }
-
-    const messages = input.map((item) => ({
-        role: item.role,
-        content: item.content,
-    }))
-
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-            model: 'llama-3.1-8b-instant',
-            messages,
-            temperature: 0.4,
-        }),
-    })
-
-    const data = await response.json().catch(() => ({}))
-
-    if (!response.ok) {
-        const err = new Error(data?.error?.message || 'Error al consultar Groq')
-        err.provider = 'groq'
-        err.status = response.status
-        err.code = data?.error?.code || null
-        err.details = data
-        throw err
-    }
-
-    const content = data?.choices?.[0]?.message?.content
-    const reply = typeof content === 'string' ? content.trim() : ''
-
-    if (!reply) {
-        const err = new Error('Groq no devolvió texto de respuesta')
-        err.provider = 'groq'
-        err.status = 500
-        err.code = 'empty_response'
-        err.details = data
-        throw err
-    }
-
-    return {
-        provider: 'groq',
-        reply,
-    }
-}
-
-function shouldFallbackToGroq(error) {
-    const text = `${error?.message || ''} ${error?.code || ''}`.toLowerCase()
-
-    return (
-        error?.provider === 'openai' &&
-        (
-            text.includes('insufficient_quota') ||
-            text.includes('quota') ||
-            text.includes('billing') ||
-            error?.status === 429
-        )
-    )
-}
-
-function getClientIp(req) {
-    const forwardedFor = req.headers.get('x-forwarded-for')
-    if (forwardedFor) {
-        return forwardedFor.split(',')[0].trim()
-    }
-
-    const realIp = req.headers.get('x-real-ip')
-    if (realIp) return realIp.trim()
-
-    return 'unknown'
-}
-
-function getRateLimitStore() {
-    if (!globalThis.__chatRateLimitStore) {
-        globalThis.__chatRateLimitStore = new Map()
-    }
-
-    return globalThis.__chatRateLimitStore
-}
-
-function checkRateLimit(key) {
-    const store = getRateLimitStore()
-    const now = Date.now()
-    const current = store.get(key)
-
-    if (!current || current.resetAt <= now) {
-        const next = {
-            count: 1,
-            resetAt: now + RATE_LIMIT_WINDOW_MS,
-        }
-        store.set(key, next)
-        return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1, resetAt: next.resetAt }
-    }
-
-    if (current.count >= RATE_LIMIT_MAX_REQUESTS) {
-        return { allowed: false, remaining: 0, resetAt: current.resetAt }
-    }
-
-    current.count += 1
-    store.set(key, current)
-
-    return {
-        allowed: true,
-        remaining: Math.max(0, RATE_LIMIT_MAX_REQUESTS - current.count),
-        resetAt: current.resetAt,
-    }
-}
-
-export async function POST(req) {
+export async function POST(request) {
     try {
-        const ip = getClientIp(req)
-        const rateLimit = checkRateLimit(ip)
+        const body = await request.json().catch(() => ({}))
+        const message = String(body?.message || '').trim()
 
-        if (!rateLimit.allowed) {
+        if (!message) {
             return NextResponse.json(
-                { error: 'Demasiadas consultas al chat. Intentá nuevamente en un minuto.' },
                 {
-                    status: 429,
-                    headers: {
-                        'Retry-After': String(Math.ceil((rateLimit.resetAt - Date.now()) / 1000)),
-                    },
-                }
+                    reply: 'Escribime tu consulta y te ayudo con productos, pagos o pedidos.',
+                    products: [],
+                },
+                { status: 200 }
             )
         }
 
-        const { message, messages = [] } = await req.json()
-        const cleanMessage = String(message || '').trim()
+        const supabase = createAdminSupabaseClient()
+        const intent = detectIntent(message)
 
-        if (!cleanMessage) {
-            return NextResponse.json({ error: 'Falta message' }, { status: 400 })
-        }
-
-        if (cleanMessage.length > MAX_MESSAGE_LENGTH) {
-            return NextResponse.json(
-                { error: `El mensaje no puede superar ${MAX_MESSAGE_LENGTH} caracteres` },
-                { status: 400 }
-            )
-        }
-
-        let products = []
-
-        if (maybeProductQuestion(cleanMessage)) {
-            products = await findRelevantProducts(cleanMessage)
-        }
-
-        const productContext = buildProductContext(products)
-        const input = buildInput(cleanMessage, messages, productContext)
-
-        try {
-            const result = await callOpenAI(input)
-            return NextResponse.json({
-                reply: result.reply,
-                provider: result.provider,
-                products,
-            })
-        } catch (openaiError) {
-            if (!shouldFallbackToGroq(openaiError)) {
-                throw openaiError
-            }
-
-            const groqResult = await callGroq(input)
+        if (intent === 'products') {
+            const products = await searchProducts(supabase, message)
+            const response = buildProductResponse(products)
 
             return NextResponse.json({
-                reply: groqResult.reply,
-                provider: groqResult.provider,
-                fallback: true,
-                products,
+                reply: response.reply,
+                products: response.products,
             })
         }
+
+        if (intent === 'bank_accounts') {
+            const accounts = await getActiveBankAccounts(supabase)
+
+            return NextResponse.json({
+                reply: buildBankResponse(accounts),
+                products: [],
+            })
+        }
+
+        if (intent === 'order_status') {
+            return NextResponse.json({
+                reply:
+                    'Para consultar un pedido necesito el número o referencia del pedido y, por seguridad, también tu DNI o teléfono. Escribilo en este formato: “Pedido ABC123, DNI 12345678”.',
+                products: [],
+            })
+        }
+
+        if (intent === 'lead') {
+            const saved = await saveLead(supabase, message)
+
+            return NextResponse.json({
+                reply: saved
+                    ? 'Perfecto, dejé registrada tu consulta. Si querés una respuesta más rápida, también podés escribirnos por WhatsApp desde el botón del sitio.'
+                    : 'Puedo ayudarte. Pasame tu nombre y WhatsApp o escribinos directamente por el botón de WhatsApp.',
+                products: [],
+            })
+        }
+
+        const featuredProducts = await searchProducts(supabase, 'lampara')
+
+        return NextResponse.json({
+            reply:
+                'Hola, soy el asistente de 3DLightLab. Puedo ayudarte a buscar productos, consultar formas de pago, ver datos de transferencia o dejar registrada una consulta comercial. ¿Qué estás buscando?',
+            products: featuredProducts.slice(0, 3),
+        })
     } catch (error) {
         return NextResponse.json(
             {
-                error: error?.message || 'Error interno del chat',
+                reply:
+                    'Hubo un problema procesando tu consulta. Podés escribirnos por WhatsApp y te ayudamos personalmente.',
+                products: [],
+                error: error?.message || 'Error en chat',
             },
-            { status: 500 }
+            { status: 200 }
         )
     }
 }
