@@ -67,6 +67,16 @@ function detectIntent(message) {
         return 'products'
     }
 
+    if (
+        text.includes('comprar') ||
+        text.includes('lo quiero') ||
+        text.includes('me interesa') ||
+        text.includes('como lo compro') ||
+        text.includes('cómo lo compro')
+    ) {
+        return 'buy'
+    }
+
     return 'general'
 }
 
@@ -455,6 +465,24 @@ export async function POST(request) {
                     ? 'Perfecto, dejé registrada tu consulta. Si querés una respuesta más rápida, también podés escribirnos por WhatsApp desde el botón del sitio.'
                     : 'Puedo ayudarte. Pasame tu nombre y WhatsApp o escribinos directamente por el botón de WhatsApp.',
                 products: [],
+            })
+        }
+
+        if (intent === 'buy') {
+            const products = await searchProducts(supabase, message)
+
+            if (!products.length) {
+                return NextResponse.json({
+                    reply:
+                        'Puedo ayudarte a encontrar el producto que buscás. Decime el nombre o describime qué necesitás.',
+                    products: [],
+                })
+            }
+
+            return NextResponse.json({
+                reply:
+                    'Perfecto, podés comprar este producto directamente desde la tienda. Si querés te guío con el pago o envío.',
+                products,
             })
         }
 
