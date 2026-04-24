@@ -154,6 +154,131 @@ async function searchProducts(supabase, message) {
     return products.slice(0, 4).map(normalizeProductForChat)
 }
 
+function extractOrderReference(text) {
+    const raw = String(text || '').trim()
+
+    const refMatch =
+        raw.match(/pedido\s*[:#-]?\s*([a-zA-Z0-9-]+)/i) ||
+        raw.match(/orden\s*[:#-]?\s*([a-zA-Z0-9-]+)/i) ||
+        raw.match(/referencia\s*[:#-]?\s*([a-zA-Z0-9-]+)/i)
+
+    return refMatch ? refMatch[1].trim() : ''
+}
+
+function extractDni(text) {
+    const match = String(text || '').match(/\b\d{7,8}\b/)
+    return match ? match[0] : ''
+}
+
+function formatOrderStatus(status) {
+    const labels = {
+        pending: 'pendiente',
+        approved: 'aprobado',
+        cancelled: 'cancelado',
+        rejected: 'rechazado',
+    }
+
+    return labels[status] || status || 'sin estado'
+}
+
+function formatShippingStatus(status) {
+    const labels = {
+        pending: 'pendiente',
+        preparing: 'en preparación',
+        shipped: 'enviado',
+        delivered: 'entregado',
+        cancelled: 'cancelado',
+    }
+
+    return labels[status] || status || 'sin estado'
+}
+
+function formatMoney(value) {
+    return `$ ${Number(value || 0).toLocaleString('es-AR')}`
+}
+
+async function findOrderStatus(supabase, message) {
+    const reference = extractOrderReference(message)
+    const dni = extractDni(message)
+    const phone = extractPhone(message)
+
+    if (!reference) {
+        return {
+            found: false,
+            reply:
+                'Para consultar tu pedido necesito el número o referencia. Por ejemplo: “Pedido ABC123, DNI 12345678”.',
+        }
+    }
+
+    if (!dni && !phone) {
+        return {
+            found: false,
+            reply:
+                'Por seguridad, además del número de pedido necesito tu DNI o teléfono. Ejemplo: “Pedido ABC123, DNI 12345678”.',
+        }
+    }
+
+    let query = supabase
+        .from('orders')
+        .select(`
+      id,
+      external_reference,
+      customer_name,
+      customer_phone,
+      customer_dni,
+      total,
+      status,
+      payment_method,
+      shipping_method,
+      shipping_status,
+      created_at,
+      paid_at,
+      cancelled_at
+    `)
+        .eq('external_reference', reference)
+        .maybeSingle()
+
+    const { data, error } = await query
+
+    if (error || !data) {
+        return {
+            found: false,
+            reply:
+                'No encontré un pedido con esa referencia. Revisá el número o escribinos por WhatsApp para ayudarte.',
+        }
+    }
+
+    const dniMatches = dni && String(data.customer_dni || '') === dni
+    const phoneDigits = String(phone || '').replace(/\D/g, '')
+    const dbPhoneDigits = String(data.customer_phone || '').replace(/\D/g, '')
+    const phoneMatches = phoneDigits && dbPhoneDigits.endsWith(phoneDigits.slice(-8))
+
+    if (!dniMatches && !phoneMatches) {
+        return {
+            found: false,
+            reply:
+                'Encontré la referencia, pero el DNI o teléfono no coincide con el pedido. Por seguridad no puedo mostrar el estado.',
+        }
+    }
+
+    return {
+        found: true,
+        reply: [
+            `Encontré tu pedido ${data.external_reference}.`,
+            `Estado del pago: ${formatOrderStatus(data.status)}.`,
+            `Estado del envío: ${formatShippingStatus(data.shipping_status)}.`,
+            `Método de pago: ${data.payment_method || '—'}.`,
+            `Método de entrega: ${data.shipping_method || '—'}.`,
+            `Total: ${formatMoney(data.total)}.`,
+            data.status === 'approved' ? 'El pago ya figura aprobado.' : null,
+            data.status === 'pending' ? 'El pedido todavía está pendiente de confirmación.' : null,
+            data.status === 'cancelled' ? 'El pedido figura cancelado.' : null,
+        ]
+            .filter(Boolean)
+            .join('\n'),
+    }
+}
+
 async function getActiveBankAccounts(supabase) {
     const { data, error } = await supabase
         .from('bank_accounts')
@@ -314,9 +439,10 @@ export async function POST(request) {
         }
 
         if (intent === 'order_status') {
+            const orderResult = await findOrderStatus(supabase, message)
+
             return NextResponse.json({
-                reply:
-                    'Para consultar un pedido necesito el número o referencia del pedido y, por seguridad, también tu DNI o teléfono. Escribilo en este formato: “Pedido ABC123, DNI 12345678”.',
+                reply: orderResult.reply,
                 products: [],
             })
         }
@@ -336,8 +462,8 @@ export async function POST(request) {
 
         return NextResponse.json({
             reply:
-                'Hola, soy el asistente de 3DLightLab. Puedo ayudarte a buscar productos, consultar formas de pago, ver datos de transferencia o dejar registrada una consulta comercial. ¿Qué estás buscando?',
-            products: featuredProducts.slice(0, 3),
+                'Hola, soy el asistente de 3DLightLab. Puedo ayudarte a buscar productos, consultar formas de pago, ver datos de transferencia, consultar el estado de un pedido o dejar registrada una consulta comercial. ¿Qué estás buscando?',
+            products: [],
         })
     } catch (error) {
         return NextResponse.json(
