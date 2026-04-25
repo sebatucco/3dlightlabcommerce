@@ -8,6 +8,7 @@ import {
   Image as ImageIcon,
   Landmark,
   LogOut,
+  Layers3,
   Mail,
   Package,
   ShoppingCart,
@@ -539,6 +540,7 @@ export default function AdminPage() {
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'categories-route', label: 'Categorías', icon: FolderTree },
     { id: 'products-route', label: 'Productos', icon: Package },
+    { id: 'variants-route', label: 'Variantes', icon: Layers3 },
     { id: 'images-route', label: 'Imágenes', icon: ImageIcon },
     { id: 'bank-accounts', label: 'Cuentas bancarias', icon: Landmark },
     { id: 'orders-route', label: 'Pedidos', icon: ShoppingCart },
@@ -609,6 +611,11 @@ export default function AdminPage() {
 
                   if (tab.id === 'bank-accounts') {
                     window.location.href = '/admin/cuentas-bancarias'
+                    return
+                  }
+
+                  if (tab.id === 'variants-route') {
+                    window.location.href = '/admin/variantes'
                     return
                   }
 
