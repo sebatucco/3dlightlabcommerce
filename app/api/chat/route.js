@@ -100,6 +100,45 @@ function formatPrice(value) {
     return `$ ${Number(value || 0).toLocaleString('es-AR')}`
 }
 
+function getCatalogImageUrl(product) {
+    const media = Array.isArray(product?.product_images)
+        ? product.product_images
+        : []
+
+    const sortedMedia = [...media].sort(
+        (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
+    )
+
+    const catalogImage =
+        sortedMedia.find(
+            (item) => item?.media_type === 'image' && item?.use_case === 'catalog'
+        ) ||
+        sortedMedia.find(
+            (item) => item?.media_type === 'image' && item?.is_primary === true
+        ) ||
+        sortedMedia.find(
+            (item) => item?.media_type === 'image'
+        )
+
+    return (
+        catalogImage?.image_url ||
+        product?.image_url ||
+        product?.image ||
+        null
+    )
+}
+
+function normalizeProductForChat(product) {
+    const catalogImageUrl = getCatalogImageUrl(product)
+
+    return {
+        ...product,
+        image_url: catalogImageUrl,
+        image: catalogImageUrl,
+        catalog_image_url: catalogImageUrl,
+    }
+}
+
 // =====================
 // IA: GROQ + OPENAI
 // =====================
@@ -288,52 +327,61 @@ function detectLocalIntent(message) {
 async function getProducts(supabase) {
     const fullSelect = `
       id,
-  category_id,
-  name,
-  slug,
-  short_description,
-  description,
-  price,
-  compare_at_price,
-  sku,
-  stock,
-  featured,
-  active,
-  image_url,
-  categories ( id, name, slug ),
-  product_images (
-    id,
-    image_url,
-    alt_text,
-    sort_order,
-    media_type,
-    use_case,
-    is_primary
-  )
-  `
+      category_id,
+      name,
+      slug,
+      short_description,
+      description,
+      price,
+      compare_at_price,
+      sku,
+      stock,
+      featured,
+      active,
+      image_url,
+      categories ( id, name, slug ),
+      product_images (
+        id,
+        image_url,
+        alt_text,
+        sort_order,
+        media_type,
+        use_case,
+        is_primary
+      )
+    `
 
-    let result = await supabase
+    const { data, error } = await supabase
         .from('products')
         .select(fullSelect)
         .eq('active', true)
         .is('deleted_at', null)
         .limit(200)
 
-    if (result.error) {
-        console.log('PRODUCTS FULL SELECT ERROR:', result.error.message)
-
-        result = await supabase
-            .from('products')
-            .select('*')
-            .limit(200)
-    }
-
-    if (result.error) {
-        console.log('PRODUCTS ERROR:', result.error.message)
+    if (error) {
+        console.log('PRODUCTS ERROR:', error.message)
         return []
     }
 
-    return result.data || []
+    return (data || []).map((product) => {
+        const media = Array.isArray(product.product_images)
+            ? product.product_images
+            : []
+
+        const sorted = [...media].sort(
+            (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
+        )
+
+        const image =
+            sorted.find(i => i.use_case === 'catalog') ||
+            sorted.find(i => i.is_primary) ||
+            sorted[0]
+
+        return {
+            ...product,
+            image_url: image?.image_url || null
+        }
+    })
 }
 
 async function getVariantsForProducts(supabase, productIds) {
@@ -446,11 +494,15 @@ function attachVariants(products, variants) {
         })
     }
 
-    return products.map((product) => ({
-        ...product,
-        category: product?.categories?.name || product?.category || null,
-        variants: byProductId.get(product.id) || [],
-    }))
+    return products.map((product) => {
+        const normalizedProduct = normalizeProductForChat(product)
+
+        return {
+            ...normalizedProduct,
+            category: product?.categories?.name || product?.category || null,
+            variants: byProductId.get(product.id) || [],
+        }
+    })
 }
 
 // =====================
