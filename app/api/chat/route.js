@@ -287,21 +287,29 @@ function detectLocalIntent(message) {
 // =====================
 async function getProducts(supabase) {
     const fullSelect = `
+      id,
+  category_id,
+  name,
+  slug,
+  short_description,
+  description,
+  price,
+  compare_at_price,
+  sku,
+  stock,
+  featured,
+  active,
+  image_url,
+  categories ( id, name, slug ),
+  product_images (
     id,
-    category_id,
-    name,
-    slug,
-    short_description,
-    description,
-    price,
-    compare_at_price,
-    sku,
-    stock,
-    featured,
-    active,
     image_url,
-    deleted_at,
-    categories(id,name,slug)
+    alt_text,
+    sort_order,
+    media_type,
+    use_case,
+    is_primary
+  )
   `
 
     let result = await supabase

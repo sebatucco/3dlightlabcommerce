@@ -14,6 +14,29 @@ function formatPrice(value) {
     }).format(amount)
 }
 
+function getCatalogImage(product) {
+    const media = Array.isArray(product?.product_images)
+        ? product.product_images
+        : []
+
+    const sortedMedia = [...media].sort(
+        (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
+    )
+
+    const catalogImage =
+        sortedMedia.find(
+            (item) => item?.media_type === 'image' && item?.use_case === 'catalog'
+        ) ||
+        sortedMedia.find(
+            (item) => item?.media_type === 'image' && item?.is_primary === true
+        ) ||
+        sortedMedia.find(
+            (item) => item?.media_type === 'image'
+        )
+
+    return catalogImage?.image_url || product?.image || product?.image_url || '/placeholder.jpg'
+}
+
 function ProductChatCard({ product }) {
     return (
         <Link
@@ -23,7 +46,7 @@ function ProductChatCard({ product }) {
             <div className="flex gap-3">
                 <div className="h-20 w-20 overflow-hidden rounded-xl bg-[#f7f1e8]">
                     <img
-                        src={product.image_url || '/placeholder.jpg'}
+                        src={getCatalogImage(product)}
                         alt={product.name}
                         className="h-full w-full object-cover"
                     />
