@@ -119,6 +119,63 @@ async function searchProducts(supabase, query) {
     return data || []
 }
 
+function formatPrice(value) {
+    return `$ ${Number(value || 0).toLocaleString('es-AR')}`
+}
+
+function buildProductResponse(products, intent = 'products') {
+    if (!Array.isArray(products) || products.length === 0) {
+        return {
+            reply:
+                'No encontré un producto exacto con esa búsqueda. Podés probar con otro nombre o contarme qué estilo, ambiente o uso estás buscando.',
+            products: [],
+        }
+    }
+
+    if (products.length === 1) {
+        const product = products[0]
+        const stock = Number(product.stock || 0)
+        const hasStock = stock > 0
+
+        return {
+            reply: [
+                intent === 'buy'
+                    ? `Perfecto, este producto puede ser una buena opción para comprar: ${product.name}.`
+                    : `Encontré este producto: ${product.name}.`,
+                product.price != null ? `Precio: ${formatPrice(product.price)}.` : null,
+                product.compare_at_price ? `Antes: ${formatPrice(product.compare_at_price)}.` : null,
+                `Stock: ${hasStock
+                    ? `${stock} unidad${stock === 1 ? '' : 'es'} disponible${stock === 1 ? '' : 's'}`
+                    : 'sin stock disponible por ahora'
+                }.`,
+                product.short_description || null,
+                hasStock
+                    ? 'Podés abrir la tarjeta para ver el detalle y avanzar con la compra.'
+                    : 'Si querés, dejá tu consulta y te avisamos cuando vuelva a estar disponible.',
+            ]
+                .filter(Boolean)
+                .join('\n'),
+            products: [product],
+        }
+    }
+
+    const summary = products
+        .slice(0, 4)
+        .map((product) => {
+            const stock = Number(product.stock || 0)
+            return `• ${product.name} — ${formatPrice(product.price)} — ${stock > 0 ? `stock ${stock}` : 'sin stock'
+                }`
+        })
+        .join('\n')
+
+    return {
+        reply:
+            `Encontré estas opciones que pueden interesarte:\n\n${summary}\n\n` +
+            'Abrí una tarjeta para ver el detalle o escribime el nombre del producto que más te interesa.',
+        products,
+    }
+}
+
 // ---------- POST ----------
 export async function POST(request) {
     try {
@@ -147,10 +204,11 @@ export async function POST(request) {
         // ---------- PRODUCTS ----------
         if (intent === 'products' || intent === 'buy') {
             const products = await searchProducts(supabase, aiQuery)
+            const response = buildProductResponse(products, intent)
 
             return NextResponse.json({
-                reply: 'Te recomiendo estas opciones 👇',
-                products,
+                reply: response.reply,
+                products: response.products,
                 debug: { source, intent, aiQuery },
             })
         }

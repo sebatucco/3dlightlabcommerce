@@ -513,6 +513,21 @@ export default function AdminVariantesPage() {
                             Producto seleccionado: <b>{selectedProduct.name}</b>
                         </p>
                     ) : null}
+
+                    <div className="rounded-2xl border border-[#d8cdb8] bg-[#faf6ee] px-4 py-3 text-sm">
+                        {editingId ? (
+                            <>
+                                <span className="block text-xs text-[#6d7e8b]">SKU variante</span>
+                                <span className="font-semibold text-[#143047]">
+                                    {form.sku || '—'}
+                                </span>
+                            </>
+                        ) : (
+                            <span className="text-[#6d7e8b]">
+                                Se generará automáticamente a partir del producto base
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 {loading ? (
@@ -1026,8 +1041,8 @@ export default function AdminVariantesPage() {
                                                             <p className="text-lg font-bold">{variant.sku}</p>
                                                             <span
                                                                 className={`rounded-full px-3 py-1 text-xs font-semibold ${variant.active
-                                                                        ? 'bg-[#ecf8f4] text-[#0f6d5f]'
-                                                                        : 'bg-[#fff1ef] text-[#b44a42]'
+                                                                    ? 'bg-[#ecf8f4] text-[#0f6d5f]'
+                                                                    : 'bg-[#fff1ef] text-[#b44a42]'
                                                                     }`}
                                                             >
                                                                 {variant.active ? 'Activa' : 'Inactiva'}

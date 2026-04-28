@@ -368,15 +368,20 @@ export default function AdminProductosPage() {
                             className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none"
                         />
 
-                        <input
-                            type="text"
-                            placeholder="SKU"
-                            value={form.sku}
-                            onChange={(e) =>
-                                setForm((prev) => ({ ...prev, sku: e.target.value.toUpperCase() }))
-                            }
-                            className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm uppercase outline-none"
-                        />
+                        <div className="rounded-2xl border border-[#d8cdb8] bg-[#faf6ee] px-4 py-3 text-sm">
+                            {editingId ? (
+                                <>
+                                    <span className="block text-xs text-[#6d7e8b]">SKU</span>
+                                    <span className="font-semibold text-[#143047]">
+                                        {form.sku || '—'}
+                                    </span>
+                                </>
+                            ) : (
+                                <span className="text-[#6d7e8b]">
+                                    El SKU se generará automáticamente al crear el producto
+                                </span>
+                            )}
+                        </div>
 
                         <input
                             type="text"
@@ -491,8 +496,8 @@ export default function AdminProductosPage() {
                                                 <p className="text-lg font-bold text-[#143047]">{product.name}</p>
                                                 <span
                                                     className={`rounded-full px-3 py-1 text-xs font-semibold ${product.active
-                                                            ? 'bg-[#ecf8f4] text-[#0f6d5f]'
-                                                            : 'bg-[#fff1ef] text-[#b44a42]'
+                                                        ? 'bg-[#ecf8f4] text-[#0f6d5f]'
+                                                        : 'bg-[#fff1ef] text-[#b44a42]'
                                                         }`}
                                                 >
                                                     {product.active ? 'Activo' : 'Inactivo'}
