@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
@@ -513,21 +515,6 @@ export default function AdminVariantesPage() {
                             Producto seleccionado: <b>{selectedProduct.name}</b>
                         </p>
                     ) : null}
-
-                    <div className="rounded-2xl border border-[#d8cdb8] bg-[#faf6ee] px-4 py-3 text-sm">
-                        {editingId ? (
-                            <>
-                                <span className="block text-xs text-[#6d7e8b]">SKU variante</span>
-                                <span className="font-semibold text-[#143047]">
-                                    {form.sku || '—'}
-                                </span>
-                            </>
-                        ) : (
-                            <span className="text-[#6d7e8b]">
-                                Se generará automáticamente a partir del producto base
-                            </span>
-                        )}
-                    </div>
                 </div>
 
                 {loading ? (
