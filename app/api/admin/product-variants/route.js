@@ -4,14 +4,28 @@ import { createAdminSupabaseClient } from '@/lib/admin-supabase'
 
 export const dynamic = 'force-dynamic'
 
+function normalizeSlug(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '')
+}
+
 function normalizeSku(value) {
     return String(value || '')
         .trim()
         .toUpperCase()
+        .replace(/[^A-Z0-9-]/g, '')
 }
 
-function toSafeNumber(value, fallback = null) {
-    if (value === '' || value == null) return fallback
+function escapeRegExp(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function toSafeNumber(value, fallback = 0) {
     const num = Number(value)
     return Number.isFinite(num) ? num : fallback
 }
@@ -22,73 +36,84 @@ function toSafeInteger(value, fallback = 0) {
 }
 
 function buildPayload(body) {
-    const product_id = String(body?.product_id || '').trim()
-    const sku = normalizeSku(body?.sku || '')
-    const name = body?.name ? String(body.name).trim() : null
+    const category_id = String(body?.category_id || '').trim() || null
+    const name = String(body?.name || '').trim()
+    const slug = normalizeSlug(body?.slug || body?.name || '')
+    const short_description = body?.short_description
+        ? String(body.short_description).trim()
+        : null
+    const description = body?.description ? String(body.description).trim() : null
+    const price = toSafeNumber(body?.price, 0)
+    const compare_at_price =
+        body?.compare_at_price === '' || body?.compare_at_price == null
+            ? null
+            : toSafeNumber(body.compare_at_price, 0)
+    const stock = Math.max(0, toSafeInteger(body?.stock, 0))
+    const featured = Boolean(body?.featured)
+    const active = body?.active !== false
 
     return {
-        product_id,
-        sku,
+        category_id,
         name,
-        price: toSafeNumber(body?.price, null),
-        compare_at_price: toSafeNumber(body?.compare_at_price, null),
-        stock: Math.max(0, toSafeInteger(body?.stock, 0)),
-        active: body?.active !== false,
+        slug,
+        short_description,
+        description,
+        price,
+        compare_at_price,
+        sku: null,
+        stock,
+        featured,
+        active,
     }
 }
 
-function normalizeOptionValues(values) {
-    if (!Array.isArray(values)) return []
+async function validateCategory(supabase, categoryId) {
+    if (!categoryId) return { ok: true, category: null }
 
-    return values
-        .map((item) => ({
-            option_id: String(item?.option_id || '').trim(),
-            option_value_id: String(item?.option_value_id || '').trim(),
-        }))
-        .filter((item) => item.option_id && item.option_value_id)
-}
-
-async function validateProduct(supabase, productId) {
     const { data, error } = await supabase
-        .from('products')
-        .select('id')
-        .eq('id', productId)
+        .from('categories')
+        .select('id, sku_prefix')
+        .eq('id', categoryId)
         .is('deleted_at', null)
         .maybeSingle()
 
     if (error) return { ok: false, error: error.message, status: 500 }
-    if (!data) return { ok: false, error: 'Producto no encontrado', status: 400 }
+    if (!data) return { ok: false, error: 'La categoría seleccionada no existe', status: 400 }
 
-    return { ok: true }
+    return { ok: true, category: data }
 }
 
-async function replaceVariantOptionValues(supabase, variantId, optionValues) {
-    const { error: deleteError } = await supabase
-        .from('product_variant_option_values')
-        .delete()
-        .eq('variant_id', variantId)
+async function generateProductSku(supabase, category) {
+    const prefix = normalizeSku(category?.sku_prefix || 'PRD') || 'PRD'
+    const regex = new RegExp(`^${escapeRegExp(prefix)}-(\\d{5})$`, 'i')
 
-    if (deleteError) {
-        return { ok: false, error: deleteError.message }
+    const { data, error } = await supabase
+        .from('products')
+        .select('sku')
+        .ilike('sku', `${prefix}-%`)
+
+    if (error) {
+        throw new Error(error.message)
     }
 
-    if (optionValues.length === 0) {
-        return { ok: true }
-    }
+    const maxNumber = (data || []).reduce((max, row) => {
+        const match = String(row.sku || '').match(regex)
+        const number = match ? Number(match[1]) : 0
+        return Math.max(max, number)
+    }, 0)
 
-    const rows = optionValues.map((item) => ({
-        variant_id: variantId,
-        option_id: item.option_id,
-        option_value_id: item.option_value_id,
-    }))
+    return `${prefix}-${String(maxNumber + 1).padStart(5, '0')}`
+}
 
-    const { error: insertError } = await supabase
-        .from('product_variant_option_values')
-        .insert(rows)
+async function ensureUniqueProductSku(supabase, sku) {
+    const { data, error } = await supabase
+        .from('products')
+        .select('id')
+        .eq('sku', sku)
+        .maybeSingle()
 
-    if (insertError) {
-        return { ok: false, error: insertError.message }
-    }
+    if (error) return { ok: false, error: error.message, status: 500 }
+    if (data) return { ok: false, error: 'Ya existe un producto con ese SKU', status: 400 }
 
     return { ok: true }
 }
@@ -98,32 +123,17 @@ export async function GET(request) {
     if (!auth.authorized) return auth.response
 
     try {
-        const { searchParams } = new URL(request.url)
-        const productId = searchParams.get('product_id')
-
         const supabase = createAdminSupabaseClient()
 
-        let query = supabase
-            .from('product_variants')
+        const { data, error } = await supabase
+            .from('products')
             .select(`
         *,
-        products(id,name,slug,sku),
-        product_variant_option_values(
-          id,
-          option_id,
-          option_value_id,
-          product_options(id,name,slug),
-          product_option_values(id,value,slug)
-        )
+        categories(id,name,slug,sku_prefix),
+        product_images(id,image_url,alt_text,sort_order,media_type,use_case,is_primary)
       `)
             .is('deleted_at', null)
             .order('created_at', { ascending: false })
-
-        if (productId) {
-            query = query.eq('product_id', productId)
-        }
-
-        const { data, error } = await query
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 })
@@ -134,7 +144,7 @@ export async function GET(request) {
         })
     } catch (error) {
         return NextResponse.json(
-            { error: error?.message || 'No se pudieron obtener las variantes' },
+            { error: error?.message || 'No se pudieron obtener los productos' },
             { status: 500 }
         )
     }
@@ -144,57 +154,68 @@ export async function POST(request) {
     const auth = await requireAdmin(request)
     if (!auth.authorized) return auth.response
 
+    const body = await request.json().catch(() => ({}))
+    const payload = buildPayload(body)
+
+    if (!payload.name || !payload.slug) {
+        return NextResponse.json(
+            { error: 'Nombre y slug son obligatorios' },
+            { status: 400 }
+        )
+    }
+
+    if (payload.price < 0) {
+        return NextResponse.json({ error: 'El precio no puede ser negativo' }, { status: 400 })
+    }
+
+    if (payload.compare_at_price != null && payload.compare_at_price < 0) {
+        return NextResponse.json(
+            { error: 'El precio tachado no puede ser negativo' },
+            { status: 400 }
+        )
+    }
+
     try {
-        const body = await request.json().catch(() => ({}))
-        const payload = buildPayload(body)
-        const optionValues = normalizeOptionValues(body?.option_values)
+        const supabase = createAdminSupabaseClient()
 
-        if (!payload.product_id) {
-            return NextResponse.json({ error: 'Falta producto' }, { status: 400 })
-        }
-
-        if (!payload.sku) {
-            return NextResponse.json({ error: 'El SKU de la variante es obligatorio' }, { status: 400 })
-        }
-
-        if (payload.price != null && payload.price < 0) {
-            return NextResponse.json({ error: 'El precio no puede ser negativo' }, { status: 400 })
-        }
-
-        if (payload.compare_at_price != null && payload.compare_at_price < 0) {
+        const categoryValidation = await validateCategory(supabase, payload.category_id)
+        if (!categoryValidation.ok) {
             return NextResponse.json(
-                { error: 'El precio tachado no puede ser negativo' },
+                { error: categoryValidation.error },
+                { status: categoryValidation.status }
+            )
+        }
+
+        payload.sku = await generateProductSku(supabase, categoryValidation.category)
+
+        const skuValidation = await ensureUniqueProductSku(supabase, payload.sku)
+        if (!skuValidation.ok) {
+            return NextResponse.json(
+                { error: skuValidation.error },
+                { status: skuValidation.status }
+            )
+        }
+
+        const { data: slugRow, error: slugError } = await supabase
+            .from('products')
+            .select('id')
+            .eq('slug', payload.slug)
+            .is('deleted_at', null)
+            .maybeSingle()
+
+        if (slugError) {
+            return NextResponse.json({ error: slugError.message }, { status: 500 })
+        }
+
+        if (slugRow) {
+            return NextResponse.json(
+                { error: 'Ya existe un producto con ese slug' },
                 { status: 400 }
             )
         }
 
-        const supabase = createAdminSupabaseClient()
-
-        const productValidation = await validateProduct(supabase, payload.product_id)
-        if (!productValidation.ok) {
-            return NextResponse.json(
-                { error: productValidation.error },
-                { status: productValidation.status }
-            )
-        }
-
-        const { data: skuRow, error: skuError } = await supabase
-            .from('product_variants')
-            .select('id')
-            .eq('sku', payload.sku)
-            .is('deleted_at', null)
-            .maybeSingle()
-
-        if (skuError) {
-            return NextResponse.json({ error: skuError.message }, { status: 500 })
-        }
-
-        if (skuRow) {
-            return NextResponse.json({ error: 'Ya existe una variante con ese SKU' }, { status: 400 })
-        }
-
-        const { data: variant, error } = await supabase
-            .from('product_variants')
+        const { data, error } = await supabase
+            .from('products')
             .insert({
                 ...payload,
                 deleted_at: null,
@@ -206,40 +227,10 @@ export async function POST(request) {
             return NextResponse.json({ error: error.message }, { status: 500 })
         }
 
-        const optionsResult = await replaceVariantOptionValues(
-            supabase,
-            variant.id,
-            optionValues
-        )
-
-        if (!optionsResult.ok) {
-            return NextResponse.json({ error: optionsResult.error }, { status: 500 })
-        }
-
-        const { data: fullVariant, error: fullError } = await supabase
-            .from('product_variants')
-            .select(`
-        *,
-        products(id,name,slug,sku),
-        product_variant_option_values(
-          id,
-          option_id,
-          option_value_id,
-          product_options(id,name,slug),
-          product_option_values(id,value,slug)
-        )
-      `)
-            .eq('id', variant.id)
-            .single()
-
-        if (fullError) {
-            return NextResponse.json(variant, { status: 201 })
-        }
-
-        return NextResponse.json(fullVariant, { status: 201 })
+        return NextResponse.json(data, { status: 201 })
     } catch (error) {
         return NextResponse.json(
-            { error: error?.message || 'No se pudo crear la variante' },
+            { error: error?.message || 'No se pudo crear el producto' },
             { status: 500 }
         )
     }

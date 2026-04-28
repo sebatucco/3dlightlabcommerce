@@ -15,7 +15,14 @@ function normalizeSlug(value) {
 }
 
 function normalizeSku(value) {
-  return String(value || '').trim().toUpperCase()
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, '')
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function toSafeNumber(value, fallback = 0) {
@@ -41,7 +48,6 @@ function buildPayload(body) {
     body?.compare_at_price === '' || body?.compare_at_price == null
       ? null
       : toSafeNumber(body.compare_at_price, 0)
-  const sku = body?.sku ? normalizeSku(body.sku) : null
   const stock = Math.max(0, toSafeInteger(body?.stock, 0))
   const featured = Boolean(body?.featured)
   const active = body?.active !== false
@@ -54,7 +60,7 @@ function buildPayload(body) {
     description,
     price,
     compare_at_price,
-    sku,
+    sku: null,
     stock,
     featured,
     active,
@@ -62,17 +68,52 @@ function buildPayload(body) {
 }
 
 async function validateCategory(supabase, categoryId) {
-  if (!categoryId) return { ok: true }
+  if (!categoryId) return { ok: true, category: null }
 
   const { data, error } = await supabase
     .from('categories')
-    .select('id')
+    .select('id, sku_prefix')
     .eq('id', categoryId)
     .is('deleted_at', null)
     .maybeSingle()
 
   if (error) return { ok: false, error: error.message, status: 500 }
   if (!data) return { ok: false, error: 'La categoría seleccionada no existe', status: 400 }
+
+  return { ok: true, category: data }
+}
+
+async function generateProductSku(supabase, category) {
+  const prefix = normalizeSku(category?.sku_prefix || 'PRD') || 'PRD'
+  const regex = new RegExp(`^${escapeRegExp(prefix)}-(\\d{5})$`, 'i')
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('sku')
+    .ilike('sku', `${prefix}-%`)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const maxNumber = (data || []).reduce((max, row) => {
+    const match = String(row.sku || '').match(regex)
+    const number = match ? Number(match[1]) : 0
+    return Math.max(max, number)
+  }, 0)
+
+  return `${prefix}-${String(maxNumber + 1).padStart(5, '0')}`
+}
+
+async function ensureUniqueProductSku(supabase, sku) {
+  const { data, error } = await supabase
+    .from('products')
+    .select('id')
+    .eq('sku', sku)
+    .maybeSingle()
+
+  if (error) return { ok: false, error: error.message, status: 500 }
+  if (data) return { ok: false, error: 'Ya existe un producto con ese SKU', status: 400 }
 
   return { ok: true }
 }
@@ -145,6 +186,16 @@ export async function POST(request) {
       )
     }
 
+    payload.sku = await generateProductSku(supabase, categoryValidation.category)
+
+    const skuValidation = await ensureUniqueProductSku(supabase, payload.sku)
+    if (!skuValidation.ok) {
+      return NextResponse.json(
+        { error: skuValidation.error },
+        { status: skuValidation.status }
+      )
+    }
+
     const { data: slugRow, error: slugError } = await supabase
       .from('products')
       .select('id')
@@ -161,26 +212,6 @@ export async function POST(request) {
         { error: 'Ya existe un producto con ese slug' },
         { status: 400 }
       )
-    }
-
-    if (payload.sku) {
-      const { data: skuRow, error: skuError } = await supabase
-        .from('products')
-        .select('id')
-        .eq('sku', payload.sku)
-        .is('deleted_at', null)
-        .maybeSingle()
-
-      if (skuError) {
-        return NextResponse.json({ error: skuError.message }, { status: 500 })
-      }
-
-      if (skuRow) {
-        return NextResponse.json(
-          { error: 'Ya existe un producto con ese SKU' },
-          { status: 400 }
-        )
-      }
     }
 
     const { data, error } = await supabase
