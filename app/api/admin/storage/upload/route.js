@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic'
 const BUCKETS = {
     image: 'product-images',
     model: 'product-models',
+    variant_image: 'product-variant-images',
 }
-
 function safeFileName(value) {
     const raw = String(value || 'archivo')
         .trim()
