@@ -3,9 +3,16 @@ import { createAdminSupabaseClient } from '@/lib/admin-supabase'
 
 export const dynamic = 'force-dynamic'
 
-// =====================
-// NORMALIZACIÓN
-// =====================
+const EMPTY_IMAGE =
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">
+      <rect width="100%" height="100%" fill="#f7f1e8"/>
+      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+        font-family="Arial" font-size="24" fill="#8d7b68">Sin imagen</text>
+    </svg>
+  `)
+
 function normalize(value) {
     return String(value || '')
         .toLowerCase()
@@ -18,130 +25,30 @@ function normalize(value) {
 
 function singularize(word) {
     const value = normalize(word)
-
     if (value.endsWith('es') && value.length > 4) return value.slice(0, -2)
     if (value.endsWith('s') && value.length > 3) return value.slice(0, -1)
-
     return value
 }
 
 const STOP_WORDS = new Set([
-    'tenes',
-    'tienes',
-    'tienen',
-    'tenian',
-    'hay',
-    'venden',
-    'vendes',
-    'vender',
-    'venda',
-    'quiero',
-    'queria',
-    'busco',
-    'buscando',
-    'necesito',
-    'necesitaria',
-    'me',
-    'un',
-    'una',
-    'unos',
-    'unas',
-    'el',
-    'la',
-    'los',
-    'las',
-    'de',
-    'del',
-    'para',
-    'por',
-    'con',
-    'en',
-    'y',
-    'o',
-    'que',
-    'algo',
-    'algun',
-    'alguna',
-    'alguno',
-    'stock',
-    'disponible',
-    'disponibles',
-    'precio',
-    'precios',
-    'cuanto',
-    'cuanto',
-    'cuesta',
-    'sale',
-    'vale',
-    'comprar',
-    'producto',
-    'productos',
-    'tenes?',
-    'tienes?',
+    'tenes', 'tienes', 'tienen', 'hay', 'venden', 'vendes', 'quiero',
+    'busco', 'necesito', 'me', 'un', 'una', 'unos', 'unas', 'el',
+    'la', 'los', 'las', 'de', 'del', 'para', 'por', 'con', 'en',
+    'y', 'o', 'que', 'algo', 'algun', 'alguna', 'precio', 'precios',
+    'cuanto', 'cuesta', 'sale', 'vale', 'comprar', 'producto', 'productos'
 ])
 
-function cleanProductQuery(message) {
-    const words = normalize(message)
+function cleanTerms(value) {
+    return normalize(value)
         .split(' ')
         .map(singularize)
         .filter((word) => word && !STOP_WORDS.has(word))
-
-    return [...new Set(words)].join(' ')
-}
-
-function extractTerms(value) {
-    return cleanProductQuery(value)
-        .split(' ')
-        .map(singularize)
-        .filter(Boolean)
 }
 
 function formatPrice(value) {
     return `$ ${Number(value || 0).toLocaleString('es-AR')}`
 }
 
-function getCatalogImageUrl(product) {
-    const media = Array.isArray(product?.product_images)
-        ? product.product_images
-        : []
-
-    const sortedMedia = [...media].sort(
-        (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
-    )
-
-    const catalogImage =
-        sortedMedia.find(
-            (item) => item?.media_type === 'image' && item?.use_case === 'catalog'
-        ) ||
-        sortedMedia.find(
-            (item) => item?.media_type === 'image' && item?.is_primary === true
-        ) ||
-        sortedMedia.find(
-            (item) => item?.media_type === 'image'
-        )
-
-    return (
-        catalogImage?.image_url ||
-        product?.image_url ||
-        product?.image ||
-        null
-    )
-}
-
-function normalizeProductForChat(product) {
-    const catalogImageUrl = getCatalogImageUrl(product)
-
-    return {
-        ...product,
-        image_url: catalogImageUrl,
-        image: catalogImageUrl,
-        catalog_image_url: catalogImageUrl,
-    }
-}
-
-// =====================
-// IA: GROQ + OPENAI
-// =====================
 function safeParseAIJson(content) {
     try {
         const clean = String(content || '').match(/\{[\s\S]*\}/)?.[0]
@@ -151,10 +58,9 @@ function safeParseAIJson(content) {
     }
 }
 
-async function callAI(provider, message) {
+async function callAI(provider, message, productContext = '') {
     const isGroq = provider === 'groq'
     const apiKey = isGroq ? process.env.GROQ_API_KEY : process.env.OPENAI_API_KEY
-
     if (!apiKey) return null
 
     const url = isGroq
@@ -167,33 +73,33 @@ async function callAI(provider, message) {
 
     const body = {
         model,
-        temperature: 0.1,
+        temperature: 0.25,
         messages: [
             {
                 role: 'system',
                 content: `
-Sos un clasificador para un ecommerce argentino de lámparas, iluminación, decoración y productos impresos en 3D.
+Sos un asistente vendedor para un ecommerce argentino de lámparas, iluminación, decoración y productos impresos en 3D.
 
-Devolvé SOLO JSON válido con esta forma exacta:
+Respondé SOLO JSON válido con esta forma:
 {
   "intent": "products|buy|variant_question|bank_accounts|order_status|checkout_help|lead|general",
-  "query": "texto limpio para buscar producto",
-  "variant_terms": ["color", "material", "medida", "estilo", "otra variante"],
-  "answer": "respuesta breve si corresponde"
+  "query": "producto principal limpio",
+  "variant_terms": ["color", "material", "medida", "estilo"],
+  "answer": "respuesta breve y vendedora"
 }
 
 Reglas:
-- Si preguntan "tienes lampara", "tenés lámparas", "hay veladores", "venden lámparas", usá intent "products".
-- Si preguntan por color, material, tamaño, modelo, terminación o cualquier variante, usá "variant_question".
-- Si quieren comprar, reservar, pagar o avanzar, usá "buy".
-- En "query" dejá solo el producto principal. Ejemplo: "tenes lampara negra de madera" => query "lampara", variant_terms ["negra","madera"].
-- Si no entendés pero parece pregunta sobre lámparas, iluminación, materiales, colores, uso o decoración, usá "general" y respondé amable sin inventar stock.
+- Si preguntan "tenés lámpara", "tienes lampara", "hay veladores", "venden luces", intent = "products".
+- Si mencionan color, material, tamaño, modelo, terminación o variante, intent = "variant_question".
+- Si dicen "quiero comprar", "lo quiero", "me gusta ese", "lo llevo", intent = "buy".
+- En query poné solo el producto principal. Ejemplo: "tenes lampara negra de madera" => query "lampara", variant_terms ["negra","madera"].
+- No inventes stock, precio ni productos.
+- Si hay contexto de productos, usalo para vender mejor.
+- Si no hay productos, pedí más detalle de estilo, ambiente, color o uso.
+${productContext ? `\nProductos reales disponibles:\n${productContext}` : ''}
         `.trim(),
             },
-            {
-                role: 'user',
-                content: message,
-            },
+            { role: 'user', content: message },
         ],
     }
 
@@ -201,68 +107,51 @@ Reglas:
         body.response_format = { type: 'json_object' }
     }
 
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-    })
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        })
 
-    const data = await res.json().catch(() => null)
+        const data = await res.json().catch(() => null)
 
-    if (!res.ok) {
-        console.log(`${provider.toUpperCase()} ERROR:`, res.status, data)
+        if (!res.ok) {
+            console.log(`${provider.toUpperCase()} ERROR:`, res.status, data)
+            return null
+        }
+
+        const content = data?.choices?.[0]?.message?.content
+        console.log(`IA RAW ${provider.toUpperCase()}:`, content)
+
+        return safeParseAIJson(content)
+    } catch (error) {
+        console.log(`${provider.toUpperCase()} FETCH ERROR:`, error?.message)
         return null
     }
-
-    const content = data?.choices?.[0]?.message?.content
-    console.log(`IA RAW ${provider.toUpperCase()}:`, content)
-
-    return safeParseAIJson(content)
 }
 
-async function interpretWithAI(message) {
-    try {
-        const groq = await callAI('groq', message)
-        if (groq?.intent) return { ...groq, source: 'groq' }
-    } catch (error) {
-        console.log('GROQ ERROR:', error?.message)
-    }
+async function interpretWithAI(message, productContext = '') {
+    const groq = await callAI('groq', message, productContext)
+    if (groq?.intent) return { ...groq, source: 'groq' }
 
-    try {
-        const openai = await callAI('openai', message)
-        if (openai?.intent) return { ...openai, source: 'openai' }
-    } catch (error) {
-        console.log('OPENAI ERROR:', error?.message)
-    }
+    const openai = await callAI('openai', message, productContext)
+    if (openai?.intent) return { ...openai, source: 'openai' }
 
     return null
 }
 
-// =====================
-// INTENT LOCAL
-// =====================
 function detectLocalIntent(message) {
     const text = normalize(message)
 
-    if (
-        text.includes('transferencia') ||
-        text.includes('cbu') ||
-        text.includes('alias') ||
-        text.includes('banco')
-    ) {
+    if (text.includes('transferencia') || text.includes('cbu') || text.includes('alias') || text.includes('banco')) {
         return 'bank_accounts'
     }
 
-    if (
-        text.includes('pedido') ||
-        text.includes('orden') ||
-        text.includes('seguimiento') ||
-        text.includes('envio') ||
-        text.includes('envío')
-    ) {
+    if (text.includes('pedido') || text.includes('orden') || text.includes('seguimiento') || text.includes('envio')) {
         return 'order_status'
     }
 
@@ -272,8 +161,8 @@ function detectLocalIntent(message) {
         text.includes('la quiero') ||
         text.includes('lo llevo') ||
         text.includes('la llevo') ||
-        text.includes('agregar al carrito') ||
-        text.includes('pagar')
+        text.includes('pagar') ||
+        text.includes('agregar al carrito')
     ) {
         return 'buy'
     }
@@ -284,11 +173,9 @@ function detectLocalIntent(message) {
         text.includes('material') ||
         text.includes('materiales') ||
         text.includes('medida') ||
-        text.includes('medidas') ||
         text.includes('tamano') ||
         text.includes('tamaño') ||
         text.includes('variante') ||
-        text.includes('variantes') ||
         text.includes('negro') ||
         text.includes('negra') ||
         text.includes('blanco') ||
@@ -301,19 +188,18 @@ function detectLocalIntent(message) {
     }
 
     if (
-        text.includes('precio') ||
-        text.includes('stock') ||
-        text.includes('hay') ||
-        text.includes('tenes') ||
-        text.includes('tienes') ||
-        text.includes('venden') ||
-        text.includes('vendes') ||
         text.includes('lampara') ||
         text.includes('lamparas') ||
         text.includes('velador') ||
         text.includes('luz') ||
         text.includes('luces') ||
-        text.includes('iluminacion')
+        text.includes('iluminacion') ||
+        text.includes('precio') ||
+        text.includes('stock') ||
+        text.includes('hay') ||
+        text.includes('tenes') ||
+        text.includes('tienes') ||
+        text.includes('venden')
     ) {
         return 'products'
     }
@@ -321,11 +207,26 @@ function detectLocalIntent(message) {
     return 'general'
 }
 
-// =====================
-// CONSULTAS SUPABASE
-// =====================
+function getCatalogImage(product) {
+    const media = Array.isArray(product?.product_images) ? product.product_images : []
+
+    const sorted = [...media].sort(
+        (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
+    )
+
+    const image =
+        sorted.find((item) => item?.media_type === 'image' && item?.use_case === 'catalog') ||
+        sorted.find((item) => item?.media_type === 'image' && item?.is_primary === true) ||
+        sorted.find((item) => item?.media_type === 'image') ||
+        sorted.find((item) => item?.image_url)
+
+    return image?.image_url || product?.image_url || product?.image || EMPTY_IMAGE
+}
+
 async function getProducts(supabase) {
-    const fullSelect = `
+    const { data, error } = await supabase
+        .from('products')
+        .select(`
       id,
       category_id,
       name,
@@ -339,8 +240,9 @@ async function getProducts(supabase) {
       featured,
       active,
       image_url,
-      categories ( id, name, slug ),
-      product_images (
+      deleted_at,
+      categories(id,name,slug),
+      product_images(
         id,
         image_url,
         alt_text,
@@ -349,11 +251,7 @@ async function getProducts(supabase) {
         use_case,
         is_primary
       )
-    `
-
-    const { data, error } = await supabase
-        .from('products')
-        .select(fullSelect)
+    `)
         .eq('active', true)
         .is('deleted_at', null)
         .limit(200)
@@ -364,22 +262,14 @@ async function getProducts(supabase) {
     }
 
     return (data || []).map((product) => {
-        const media = Array.isArray(product.product_images)
-            ? product.product_images
-            : []
-
-        const sorted = [...media].sort(
-            (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
-        )
-
-        const image =
-            sorted.find(i => i.use_case === 'catalog') ||
-            sorted.find(i => i.is_primary) ||
-            sorted[0]
+        const image = getCatalogImage(product)
 
         return {
             ...product,
-            image_url: image?.image_url || null
+            image_url: image,
+            image: image,
+            catalog_image_url: image,
+            category: product?.categories?.name || null,
         }
     })
 }
@@ -437,15 +327,8 @@ function getVariantLabels(variant) {
 
     return rows
         .map((row) => {
-            const optionName =
-                row?.product_options?.name ||
-                row?.product_options?.slug ||
-                ''
-
-            const optionValue =
-                row?.product_option_values?.value ||
-                row?.product_option_values?.slug ||
-                ''
+            const optionName = row?.product_options?.name || row?.product_options?.slug || ''
+            const optionValue = row?.product_option_values?.value || row?.product_option_values?.slug || ''
 
             if (!optionName && !optionValue) return null
             if (!optionName) return optionValue
@@ -457,12 +340,10 @@ function getVariantLabels(variant) {
 }
 
 function variantSearchText(variant) {
-    const labels = getVariantLabels(variant).join(' ')
-
     return normalize([
         variant?.sku,
         variant?.name,
-        labels,
+        getVariantLabels(variant).join(' '),
     ].filter(Boolean).join(' '))
 }
 
@@ -494,41 +375,30 @@ function attachVariants(products, variants) {
         })
     }
 
-    return products.map((product) => {
-        const normalizedProduct = normalizeProductForChat(product)
-
-        return {
-            ...normalizedProduct,
-            category: product?.categories?.name || product?.category || null,
-            variants: byProductId.get(product.id) || [],
-        }
-    })
+    return products.map((product) => ({
+        ...product,
+        variants: byProductId.get(product.id) || [],
+    }))
 }
 
-// =====================
-// SCORING DE BÚSQUEDA
-// =====================
 function scoreProduct(product, productTerms, variantTerms) {
     const name = normalize(product?.name)
     const text = productSearchText(product)
     const allTerms = [...productTerms, ...variantTerms].map(singularize)
 
     let score = 0
+    const matchedVariants = []
 
     for (const term of productTerms) {
         if (!term) continue
-
         if (name.includes(term)) score += 14
         if (text.includes(term)) score += 6
     }
 
     for (const term of variantTerms) {
         if (!term) continue
-
         if (text.includes(term)) score += 3
     }
-
-    const matchedVariants = []
 
     for (const variant of product.variants || []) {
         const variantText = variant.search_text || variantSearchText(variant)
@@ -541,22 +411,35 @@ function scoreProduct(product, productTerms, variantTerms) {
         }
 
         if (variantScore > 0) {
-            matchedVariants.push({
-                ...variant,
-                _score: variantScore,
-            })
-
+            matchedVariants.push({ ...variant, _score: variantScore })
             score += variantScore
         }
     }
 
     if (Number(product?.stock || 0) > 0) score += 1
-    if (product?.featured) score += 1
+    if (product?.featured) score += 2
 
     return {
         score,
         matchedVariants: matchedVariants.sort((a, b) => b._score - a._score),
     }
+}
+
+function isGenericLampSearch(terms) {
+    return terms.some((term) =>
+        [
+            'lampara',
+            'lamparas',
+            'velador',
+            'veladores',
+            'luz',
+            'luces',
+            'iluminacion',
+            'decoracion',
+            'mesa',
+            'escritorio',
+        ].includes(term)
+    )
 }
 
 async function searchProducts(supabase, rawQuery, rawVariantTerms = []) {
@@ -565,20 +448,16 @@ async function searchProducts(supabase, rawQuery, rawVariantTerms = []) {
     const variants = await getVariantsForProducts(supabase, productIds)
     const products = attachVariants(productsBase, variants)
 
-    const productTerms = extractTerms(rawQuery)
+    const productTerms = cleanTerms(rawQuery)
     const variantTerms = Array.isArray(rawVariantTerms)
-        ? rawVariantTerms.flatMap((term) => extractTerms(term))
-        : extractTerms(rawVariantTerms)
+        ? rawVariantTerms.flatMap((term) => cleanTerms(term))
+        : cleanTerms(rawVariantTerms)
 
-    const finalProductTerms = productTerms.length > 0 ? productTerms : extractTerms(rawVariantTerms)
+    const allTerms = [...productTerms, ...variantTerms]
 
-    if (finalProductTerms.length === 0 && variantTerms.length === 0) {
-        return []
-    }
-
-    return products
+    const scoredProducts = products
         .map((product) => {
-            const result = scoreProduct(product, finalProductTerms, variantTerms)
+            const result = scoreProduct(product, productTerms, variantTerms)
 
             return {
                 ...product,
@@ -588,12 +467,23 @@ async function searchProducts(supabase, rawQuery, rawVariantTerms = []) {
         })
         .filter((product) => product._score > 0)
         .sort((a, b) => b._score - a._score)
-        .slice(0, 6)
+
+    if (scoredProducts.length > 0) return scoredProducts.slice(0, 6)
+
+    if (isGenericLampSearch(allTerms)) {
+        return products
+            .filter((product) => Number(product?.stock || 0) > 0)
+            .sort((a, b) => {
+                if (a.featured && !b.featured) return -1
+                if (!a.featured && b.featured) return 1
+                return Number(b.stock || 0) - Number(a.stock || 0)
+            })
+            .slice(0, 6)
+    }
+
+    return []
 }
 
-// =====================
-// RESPUESTAS
-// =====================
 function summarizeVariants(product) {
     const variants = product.matched_variants?.length
         ? product.matched_variants
@@ -601,7 +491,7 @@ function summarizeVariants(product) {
 
     if (!variants.length) return null
 
-    const visible = variants.slice(0, 4).map((variant) => {
+    return variants.slice(0, 4).map((variant) => {
         const labels = variant.option_labels?.length
             ? variant.option_labels.join(', ')
             : variant.name || variant.sku || 'Variante'
@@ -614,76 +504,101 @@ function summarizeVariants(product) {
 
         const stock = Number(variant.stock || 0)
 
-        return `  - ${labels}${price ? ` — ${price}` : ''} — ${stock > 0 ? `stock ${stock}` : 'sin stock'}`
-    })
-
-    return visible.join('\n')
+        return `- ${labels}${price ? ` — ${price}` : ''} — ${stock > 0 ? `stock ${stock}` : 'sin stock'}`
+    }).join('\n')
 }
 
-function buildProductResponse(products, intent = 'products', query = '', variantTerms = []) {
+function productsContext(products) {
+    return products.slice(0, 6).map((product) => {
+        const variants = summarizeVariants(product)
+
+        return [
+            `${product.name}`,
+            `precio: ${formatPrice(product.price)}`,
+            `stock: ${Number(product.stock || 0)}`,
+            product.short_description ? `detalle: ${product.short_description}` : null,
+            variants ? `variantes:\n${variants}` : null,
+        ].filter(Boolean).join('\n')
+    }).join('\n\n')
+}
+
+function buildFallbackProductResponse(products, intent = 'products', query = '') {
     if (!Array.isArray(products) || products.length === 0) {
         return {
             reply:
                 `No encontré productos para "${query}". ` +
-                'Podés probar con otro nombre, color, material, ambiente o uso. Por ejemplo: “lámpara negra”, “velador blanco” o “lámpara de escritorio”.',
+                'Contame qué estilo, ambiente, color o material buscás y te ayudo a encontrar una opción.',
             products: [],
         }
     }
 
     if (products.length === 1) {
         const product = products[0]
-        const stock = Number(product.stock || 0)
         const variantsText = summarizeVariants(product)
-
-        const lines = [
-            intent === 'buy'
-                ? `Perfecto, encontré una opción para avanzar con la compra: ${product.name}.`
-                : `Sí, tenemos esta opción: ${product.name}.`,
-            product.price != null ? `Precio base: ${formatPrice(product.price)}.` : null,
-            product.compare_at_price ? `Antes: ${formatPrice(product.compare_at_price)}.` : null,
-            stock > 0 ? `Stock general: ${stock}.` : null,
-            product.short_description || null,
-            variantsText ? `Variantes disponibles o relacionadas:\n${variantsText}` : null,
-            intent === 'buy'
-                ? 'Abrí la tarjeta del producto para elegir variante, revisar stock y avanzar al carrito.'
-                : 'Si te gusta, puedo ayudarte a elegir color, material o variante antes de comprar.',
-        ]
+        const stock = Number(product.stock || 0)
 
         return {
-            reply: lines.filter(Boolean).join('\n'),
+            reply: [
+                intent === 'buy'
+                    ? `Perfecto, encontré esta opción para comprar: ${product.name}.`
+                    : `Sí, tenemos esta opción: ${product.name}.`,
+                `Precio: ${formatPrice(product.price)}.`,
+                stock > 0 ? `Stock disponible: ${stock}.` : 'Por ahora figura sin stock general, revisá variantes disponibles.',
+                product.short_description || null,
+                variantsText ? `Variantes disponibles:\n${variantsText}` : null,
+                'Abrí la tarjeta del producto para ver el detalle y avanzar con la compra.',
+            ].filter(Boolean).join('\n'),
             products: [product],
         }
     }
 
-    const summary = products
-        .slice(0, 4)
-        .map((product) => {
-            const stock = Number(product.stock || 0)
-            const variantsText = summarizeVariants(product)
+    const summary = products.slice(0, 4).map((product) => {
+        const stock = Number(product.stock || 0)
+        const variantsText = summarizeVariants(product)
 
-            return [
-                `• ${product.name} — ${product.price != null ? formatPrice(product.price) : 'consultar precio'} — ${stock > 0 ? `stock ${stock}` : 'ver variantes'}`,
-                variantsText ? variantsText : null,
-            ].filter(Boolean).join('\n')
-        })
-        .join('\n\n')
+        return [
+            `• ${product.name} — ${formatPrice(product.price)} — ${stock > 0 ? `stock ${stock}` : 'ver variantes'}`,
+            variantsText ? variantsText : null,
+        ].filter(Boolean).join('\n')
+    }).join('\n\n')
 
     return {
         reply:
             `Sí, encontré estas opciones:\n\n${summary}\n\n` +
-            'Decime cuál te gusta y te ayudo a elegir variante, color, material o avanzar con la compra.',
+            'Decime cuál te gusta y te ayudo a elegir color, material, variante o avanzar con la compra.',
         products,
     }
 }
 
-async function buildGeneralAIAnswer(message) {
+async function buildAIProductResponse(message, products, intent, source) {
+    const context = productsContext(products)
+
     const ai = await interpretWithAI(
-        `Respondé como asistente vendedor de ecommerce de lámparas e iluminación. No inventes stock ni precios. Pregunta del cliente: ${message}`
+        `
+Cliente: ${message}
+
+Armá una respuesta breve, vendedora y útil.
+No inventes productos, precios ni stock.
+Usá solo estos productos reales:
+${context}
+    `.trim(),
+        context
     )
 
-    if (ai?.answer) return ai.answer
+    if (ai?.answer) {
+        return {
+            reply: ai.answer,
+            products,
+            source: ai.source || source,
+        }
+    }
 
-    return null
+    const fallback = buildFallbackProductResponse(products, intent, message)
+
+    return {
+        ...fallback,
+        source,
+    }
 }
 
 async function getBankAccountsResponse(supabase) {
@@ -694,25 +609,17 @@ async function getBankAccountsResponse(supabase) {
         .limit(10)
 
     if (error || !data?.length) {
-        return 'Podés pagar por transferencia bancaria. Si querés avanzar, escribinos y te pasamos los datos de pago.'
+        return 'Podés pagar por transferencia bancaria. Si querés avanzar, te indicamos los datos de pago al finalizar la compra.'
     }
 
-    const accounts = data
-        .map((account) => {
-            const alias = account.alias ? `Alias: ${account.alias}` : null
-            const cbu = account.cbu ? `CBU/CVU: ${account.cbu}` : null
-            const holder = account.holder_name ? `Titular: ${account.holder_name}` : null
-
-            return [account.bank_name, alias, cbu, holder].filter(Boolean).join(' — ')
-        })
-        .join('\n')
-
-    return `Estas son las cuentas disponibles para transferencia:\n\n${accounts}`
+    return data.map((account) => {
+        const alias = account.alias ? `Alias: ${account.alias}` : null
+        const cbu = account.cbu ? `CBU/CVU: ${account.cbu}` : null
+        const holder = account.holder_name ? `Titular: ${account.holder_name}` : null
+        return [account.bank_name, alias, cbu, holder].filter(Boolean).join(' — ')
+    }).join('\n')
 }
 
-// =====================
-// POST
-// =====================
 export async function POST(request) {
     try {
         const body = await request.json().catch(() => ({}))
@@ -728,17 +635,19 @@ export async function POST(request) {
         const supabase = createAdminSupabaseClient()
 
         const localIntent = detectLocalIntent(message)
-        const localQuery = cleanProductQuery(message)
+        const localQuery = cleanTerms(message).join(' ')
 
         const ai = await interpretWithAI(message)
 
-        const aiIntent = ai?.intent || null
         const intent =
-            aiIntent && aiIntent !== 'general'
-                ? aiIntent
+            ai?.intent && ai.intent !== 'general'
+                ? ai.intent
                 : localIntent
 
-        const aiQuery = cleanProductQuery(ai?.query || '') || localQuery || message
+        const aiQuery =
+            cleanTerms(ai?.query || '').join(' ') ||
+            localQuery ||
+            message
 
         const variantTerms = Array.isArray(ai?.variant_terms)
             ? ai.variant_terms
@@ -757,29 +666,20 @@ export async function POST(request) {
             hasOpenAI: Boolean(process.env.OPENAI_API_KEY),
         })
 
-        if (
-            intent === 'products' ||
-            intent === 'buy' ||
-            intent === 'variant_question'
-        ) {
+        if (intent === 'products' || intent === 'buy' || intent === 'variant_question') {
             const products = await searchProducts(
                 supabase,
                 aiQuery || message,
-                variantTerms.length ? variantTerms : extractTerms(message)
+                variantTerms.length ? variantTerms : cleanTerms(message)
             )
 
-            const response = buildProductResponse(
-                products,
-                intent,
-                aiQuery || message,
-                variantTerms
-            )
+            const response = await buildAIProductResponse(message, products, intent, source)
 
             return NextResponse.json({
                 reply: response.reply,
                 products: response.products,
                 debug: {
-                    source,
+                    source: response.source || source,
                     intent,
                     aiQuery,
                     variantTerms,
@@ -803,8 +703,7 @@ export async function POST(request) {
 
         if (intent === 'order_status') {
             return NextResponse.json({
-                reply:
-                    'Para revisar un pedido, pasame el número de orden o el email con el que hiciste la compra.',
+                reply: 'Para revisar un pedido, pasame el número de orden o el email con el que hiciste la compra.',
                 products: [],
                 debug: { source, intent, aiQuery },
             })
@@ -812,22 +711,24 @@ export async function POST(request) {
 
         if (intent === 'checkout_help') {
             return NextResponse.json({
-                reply:
-                    'Para comprar, elegí el producto, seleccioná la variante si corresponde, agregalo al carrito y seguí el checkout. También puedo ayudarte a encontrar el producto correcto.',
+                reply: 'Para comprar, elegí el producto, seleccioná la variante si corresponde, agregalo al carrito y seguí el checkout. También puedo ayudarte a encontrar la lámpara ideal.',
                 products: [],
                 debug: { source, intent, aiQuery },
             })
         }
 
-        const aiAnswer = ai?.answer || await buildGeneralAIAnswer(message)
+        const generalAI = await interpretWithAI(
+            `Respondé como asistente vendedor de ecommerce de lámparas. No inventes stock ni precios. Pregunta: ${message}`
+        )
 
         return NextResponse.json({
             reply:
-                aiAnswer ||
+                generalAI?.answer ||
+                ai?.answer ||
                 'Hola, soy el asistente de 3DLightLab. Puedo ayudarte a encontrar lámparas, colores, materiales, variantes, precios, stock y formas de pago. ¿Qué estás buscando?',
             products: [],
             debug: {
-                source,
+                source: generalAI?.source || source,
                 intent,
                 aiQuery,
                 localIntent,
