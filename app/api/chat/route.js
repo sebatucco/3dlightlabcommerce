@@ -1,6 +1,3 @@
-import { NextResponse } from 'next/server'
-import { createAdminSupabaseClient } from '@/lib/admin-supabase'
-
 export const dynamic = 'force-dynamic'
 
 const EMPTY_IMAGE =
@@ -30,12 +27,83 @@ function singularize(word) {
     return value
 }
 
+function hasLightingContext(message) {
+    const text = normalize(message)
+
+    return (
+        text.includes('lampar') ||
+        text.includes('lamp') ||
+        text.includes('velador') ||
+        text.includes('luz') ||
+        text.includes('luces') ||
+        text.includes('iluminacion') ||
+        text.includes('mesa') ||
+        text.includes('escritorio') ||
+        text.includes('habitacion') ||
+        text.includes('living') ||
+        text.includes('decoracion') ||
+        text.includes('destacado') ||
+        text.includes('destacados') ||
+        text.includes('producto destacado') ||
+        text.includes('productos destacados')
+    )
+}
+
+function hasBuyContext(message) {
+    const text = normalize(message)
+
+    return (
+        text.includes('comprar') ||
+        text.includes('lo quiero') ||
+        text.includes('la quiero') ||
+        text.includes('lo llevo') ||
+        text.includes('la llevo') ||
+        text.includes('agregar al carrito') ||
+        text.includes('pagar') ||
+        text.includes('checkout') ||
+        text.includes('mercado pago') ||
+        text.includes('mercadopago') ||
+        text.includes('transferencia')
+    )
+}
+
+function hasPaymentContext(message) {
+    const text = normalize(message)
+
+    return (
+        text.includes('pago') ||
+        text.includes('pagar') ||
+        text.includes('mercado pago') ||
+        text.includes('mercadopago') ||
+        text.includes('transferencia') ||
+        text.includes('alias') ||
+        text.includes('cbu') ||
+        text.includes('tarjeta') ||
+        text.includes('debito') ||
+        text.includes('credito')
+    )
+}
+
+function hasStockContext(message) {
+    const text = normalize(message)
+
+    return (
+        text.includes('stock') ||
+        text.includes('disponible') ||
+        text.includes('disponibles') ||
+        text.includes('hay') ||
+        text.includes('tenes') ||
+        text.includes('tienes')
+    )
+}
+
 const STOP_WORDS = new Set([
     'tenes', 'tienes', 'tienen', 'hay', 'venden', 'vendes', 'quiero',
     'busco', 'necesito', 'me', 'un', 'una', 'unos', 'unas', 'el',
     'la', 'los', 'las', 'de', 'del', 'para', 'por', 'con', 'en',
     'y', 'o', 'que', 'algo', 'algun', 'alguna', 'precio', 'precios',
-    'cuanto', 'cuesta', 'sale', 'vale', 'comprar', 'producto', 'productos'
+    'cuanto', 'cuesta', 'sale', 'vale', 'comprar', 'producto', 'productos',
+    'muestrame', 'mostrame', 'mostrar', 'ver', 'quiero'
 ])
 
 function cleanTerms(value) {
@@ -58,7 +126,7 @@ function safeParseAIJson(content) {
     }
 }
 
-async function callAI(provider, message, productContext = '') {
+async function callAI(provider, message) {
     const isGroq = provider === 'groq'
     const apiKey = isGroq ? process.env.GROQ_API_KEY : process.env.OPENAI_API_KEY
     if (!apiKey) return null
@@ -73,39 +141,36 @@ async function callAI(provider, message, productContext = '') {
 
     const body = {
         model,
-        temperature: 0.25,
+        temperature: 0.2,
         messages: [
             {
                 role: 'system',
                 content: `
-Sos un asistente vendedor para un ecommerce argentino de lámparas, iluminación, decoración y productos impresos en 3D.
+Sos clasificador para un ecommerce argentino de lámparas, iluminación y decoración.
 
-Respondé SOLO JSON válido con esta forma:
+Respondé SOLO JSON válido:
 {
-  "intent": "products|buy|variant_question|bank_accounts|order_status|checkout_help|lead|general",
+  "intent": "products|featured|stock|buy|payment|bank_accounts|order_status|checkout_help|general",
   "query": "producto principal limpio",
   "variant_terms": ["color", "material", "medida", "estilo"],
-  "answer": "respuesta breve y vendedora"
+  "answer": "respuesta breve"
 }
 
 Reglas:
-- Si preguntan "tenés lámpara", "tienes lampara", "hay veladores", "venden luces", intent = "products".
-- Si mencionan color, material, tamaño, modelo, terminación o variante, intent = "variant_question".
-- Si dicen "quiero comprar", "lo quiero", "me gusta ese", "lo llevo", intent = "buy".
-- En query poné solo el producto principal. Ejemplo: "tenes lampara negra de madera" => query "lampara", variant_terms ["negra","madera"].
-- No inventes stock, precio ni productos.
-- Si hay contexto de productos, usalo para vender mejor.
-- Si no hay productos, pedí más detalle de estilo, ambiente, color o uso.
-${productContext ? `\nProductos reales disponibles:\n${productContext}` : ''}
+- Si pregunta por lámparas, luces, veladores, iluminación o productos destacados, intent debe ser products, featured o stock.
+- Si dice "muestrame un producto destacado", intent = "featured".
+- Si pregunta "tienes stock de lamparas", intent = "stock", query = "lampara".
+- Si quiere comprar, pagar, llevar o avanzar, intent = "buy".
+- Si pregunta por transferencia, alias, cbu, Mercado Pago o tarjeta, intent = "payment".
+- No inventes stock, precios ni productos.
+- En query poné solo el producto principal.
         `.trim(),
             },
             { role: 'user', content: message },
         ],
     }
 
-    if (!isGroq) {
-        body.response_format = { type: 'json_object' }
-    }
+    if (!isGroq) body.response_format = { type: 'json_object' }
 
     try {
         const res = await fetch(url, {
@@ -134,81 +199,50 @@ ${productContext ? `\nProductos reales disponibles:\n${productContext}` : ''}
     }
 }
 
-async function interpretWithAI(message, productContext = '') {
-    const groq = await callAI('groq', message, productContext)
+async function interpretWithAI(message) {
+    const groq = await callAI('groq', message)
     if (groq?.intent) return { ...groq, source: 'groq' }
 
-    const openai = await callAI('openai', message, productContext)
+    const openai = await callAI('openai', message)
     if (openai?.intent) return { ...openai, source: 'openai' }
 
     return null
 }
 
 function detectLocalIntent(message) {
+    if (hasPaymentContext(message)) return 'payment'
+    if (hasBuyContext(message)) return 'buy'
+    if (hasStockContext(message) && hasLightingContext(message)) return 'stock'
+
     const text = normalize(message)
 
-    if (text.includes('transferencia') || text.includes('cbu') || text.includes('alias') || text.includes('banco')) {
-        return 'bank_accounts'
+    if (
+        text.includes('destacado') ||
+        text.includes('destacados') ||
+        text.includes('recomendado') ||
+        text.includes('recomendados')
+    ) {
+        return 'featured'
     }
 
-    if (text.includes('pedido') || text.includes('orden') || text.includes('seguimiento') || text.includes('envio')) {
+    if (hasLightingContext(message)) return 'products'
+
+    if (
+        text.includes('pedido') ||
+        text.includes('orden') ||
+        text.includes('seguimiento') ||
+        text.includes('envio')
+    ) {
         return 'order_status'
-    }
-
-    if (
-        text.includes('comprar') ||
-        text.includes('lo quiero') ||
-        text.includes('la quiero') ||
-        text.includes('lo llevo') ||
-        text.includes('la llevo') ||
-        text.includes('pagar') ||
-        text.includes('agregar al carrito')
-    ) {
-        return 'buy'
-    }
-
-    if (
-        text.includes('color') ||
-        text.includes('colores') ||
-        text.includes('material') ||
-        text.includes('materiales') ||
-        text.includes('medida') ||
-        text.includes('tamano') ||
-        text.includes('tamaño') ||
-        text.includes('variante') ||
-        text.includes('negro') ||
-        text.includes('negra') ||
-        text.includes('blanco') ||
-        text.includes('blanca') ||
-        text.includes('madera') ||
-        text.includes('plastico') ||
-        text.includes('plástico')
-    ) {
-        return 'variant_question'
-    }
-
-    if (
-        text.includes('lampara') ||
-        text.includes('lamparas') ||
-        text.includes('velador') ||
-        text.includes('luz') ||
-        text.includes('luces') ||
-        text.includes('iluminacion') ||
-        text.includes('precio') ||
-        text.includes('stock') ||
-        text.includes('hay') ||
-        text.includes('tenes') ||
-        text.includes('tienes') ||
-        text.includes('venden')
-    ) {
-        return 'products'
     }
 
     return 'general'
 }
 
 function getCatalogImage(product) {
-    const media = Array.isArray(product?.product_images) ? product.product_images : []
+    const media = Array.isArray(product?.product_images)
+        ? product.product_images
+        : []
 
     const sorted = [...media].sort(
         (a, b) => (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
@@ -267,7 +301,7 @@ async function getProducts(supabase) {
         return {
             ...product,
             image_url: image,
-            image: image,
+            image,
             catalog_image_url: image,
             category: product?.categories?.name || null,
         }
@@ -395,19 +429,12 @@ function scoreProduct(product, productTerms, variantTerms) {
         if (text.includes(term)) score += 6
     }
 
-    for (const term of variantTerms) {
-        if (!term) continue
-        if (text.includes(term)) score += 3
-    }
-
     for (const variant of product.variants || []) {
         const variantText = variant.search_text || variantSearchText(variant)
         let variantScore = 0
 
         for (const term of allTerms) {
-            if (term && variantText.includes(term)) {
-                variantScore += 8
-            }
+            if (term && variantText.includes(term)) variantScore += 8
         }
 
         if (variantScore > 0) {
@@ -425,28 +452,40 @@ function scoreProduct(product, productTerms, variantTerms) {
     }
 }
 
-function isGenericLampSearch(terms) {
-    return terms.some((term) =>
-        [
-            'lampara',
-            'lamparas',
-            'velador',
-            'veladores',
-            'luz',
-            'luces',
-            'iluminacion',
-            'decoracion',
-            'mesa',
-            'escritorio',
-        ].includes(term)
-    )
-}
-
-async function searchProducts(supabase, rawQuery, rawVariantTerms = []) {
+async function loadProductsWithVariants(supabase) {
     const productsBase = await getProducts(supabase)
     const productIds = productsBase.map((product) => product.id).filter(Boolean)
     const variants = await getVariantsForProducts(supabase, productIds)
-    const products = attachVariants(productsBase, variants)
+    return attachVariants(productsBase, variants)
+}
+
+function sortProductsForBase(products, intent) {
+    let list = [...products]
+
+    if (intent === 'featured') {
+        list = list.filter((product) => product.featured || Number(product.stock || 0) > 0)
+    }
+
+    if (intent === 'stock') {
+        list = list.filter((product) => Number(product.stock || 0) > 0)
+    }
+
+    return list
+        .map((product) => ({
+            ...product,
+            matched_variants: [],
+            _score: product.featured ? 2 : 1,
+        }))
+        .sort((a, b) => {
+            if (a.featured && !b.featured) return -1
+            if (!a.featured && b.featured) return 1
+            return Number(b.stock || 0) - Number(a.stock || 0)
+        })
+        .slice(0, 6)
+}
+
+async function searchProducts(supabase, rawQuery, rawVariantTerms = [], intent = 'products', originalMessage = '') {
+    const products = await loadProductsWithVariants(supabase)
 
     const productTerms = cleanTerms(rawQuery)
     const variantTerms = Array.isArray(rawVariantTerms)
@@ -454,20 +493,10 @@ async function searchProducts(supabase, rawQuery, rawVariantTerms = []) {
         : cleanTerms(rawVariantTerms)
 
     const allTerms = [...productTerms, ...variantTerms]
-
-    console.log('CHAT SEARCH DEBUG:', {
-        rawQuery,
-        rawVariantTerms,
-        productTerms,
-        variantTerms,
-        allTerms,
-        productsCount: products.length,
-        products: products.map((p) => ({
-            name: p.name,
-            stock: p.stock,
-            image_url: p.image_url,
-        })),
-    })
+    const shouldShowBase =
+        hasLightingContext(originalMessage) ||
+        hasLightingContext(rawQuery) ||
+        ['featured', 'stock', 'buy'].includes(intent)
 
     const scoredProducts = products
         .map((product) => {
@@ -484,40 +513,13 @@ async function searchProducts(supabase, rawQuery, rawVariantTerms = []) {
 
     if (scoredProducts.length > 0) return scoredProducts.slice(0, 6)
 
-    const genericTerms = [
-        'lampara',
-        'lamp',
-        'velador',
-        'luz',
-        'luces',
-        'iluminacion',
-        'table',
-        'mesa',
-        'escritorio',
-    ]
-
-    const isGeneric = allTerms.some((term) =>
-        genericTerms.includes(normalize(term))
-    )
-
-    if (isGeneric) {
-        return products
-            .filter((product) => Number(product?.stock || 0) > 0)
-            .map((product) => ({
-                ...product,
-                matched_variants: [],
-                _score: product.featured ? 2 : 1,
-            }))
-            .sort((a, b) => {
-                if (a.featured && !b.featured) return -1
-                if (!a.featured && b.featured) return 1
-                return Number(b.stock || 0) - Number(a.stock || 0)
-            })
-            .slice(0, 6)
+    if (shouldShowBase) {
+        return sortProductsForBase(products, intent)
     }
 
     return []
 }
+
 function summarizeVariants(product) {
     const variants = product.matched_variants?.length
         ? product.matched_variants
@@ -542,105 +544,49 @@ function summarizeVariants(product) {
     }).join('\n')
 }
 
-function productsContext(products) {
-    return products.slice(0, 6).map((product) => {
-        const variants = summarizeVariants(product)
+function buildProductResponse(products, intent, message) {
+    if (!products.length) {
+        if (!hasLightingContext(message)) {
+            return {
+                reply: 'Puedo ayudarte con lámparas, veladores, iluminación, colores, materiales, stock y formas de pago. ¿Qué tipo de lámpara estás buscando?',
+                products: [],
+            }
+        }
 
-        return [
-            `${product.name}`,
-            `precio: ${formatPrice(product.price)}`,
-            `stock: ${Number(product.stock || 0)}`,
-            product.short_description ? `detalle: ${product.short_description}` : null,
-            variants ? `variantes:\n${variants}` : null,
-        ].filter(Boolean).join('\n')
-    }).join('\n\n')
-}
-
-function buildFallbackProductResponse(products, intent = 'products', query = '') {
-    if (!Array.isArray(products) || products.length === 0) {
         return {
-            reply:
-                `No encontré productos para "${query}". ` +
-                'Contame qué estilo, ambiente, color o material buscás y te ayudo a encontrar una opción.',
+            reply: 'No encontré productos cargados para esa búsqueda. Probá con “lámpara”, “velador”, “lámpara de escritorio” o contame qué ambiente querés iluminar.',
             products: [],
         }
     }
 
-    if (products.length === 1) {
-        const product = products[0]
-        const variantsText = summarizeVariants(product)
-        const stock = Number(product.stock || 0)
-
+    if (intent === 'buy') {
         return {
-            reply: [
-                intent === 'buy'
-                    ? `Perfecto, encontré esta opción para comprar: ${product.name}.`
-                    : `Sí, tenemos esta opción: ${product.name}.`,
-                `Precio: ${formatPrice(product.price)}.`,
-                stock > 0 ? `Stock disponible: ${stock}.` : 'Por ahora figura sin stock general, revisá variantes disponibles.',
-                product.short_description || null,
-                variantsText ? `Variantes disponibles:\n${variantsText}` : null,
-                'Abrí la tarjeta del producto para ver el detalle y avanzar con la compra.',
-            ].filter(Boolean).join('\n'),
-            products: [product],
+            reply:
+                'Perfecto. Te muestro opciones disponibles para que elijas una. Abrí la tarjeta del producto, seleccioná la variante si corresponde y seguí al checkout para pagar.',
+            products,
         }
     }
 
-    const summary = products.slice(0, 4).map((product) => {
-        const stock = Number(product.stock || 0)
-        const variantsText = summarizeVariants(product)
+    if (intent === 'stock') {
+        return {
+            reply:
+                'Sí, estas opciones figuran con stock disponible. Podés abrir una tarjeta para ver detalle, variantes y avanzar con la compra.',
+            products,
+        }
+    }
 
-        return [
-            `• ${product.name} — ${formatPrice(product.price)} — ${stock > 0 ? `stock ${stock}` : 'ver variantes'}`,
-            variantsText ? variantsText : null,
-        ].filter(Boolean).join('\n')
-    }).join('\n\n')
+    if (intent === 'featured') {
+        return {
+            reply:
+                'Te muestro productos destacados/recomendados. Si alguno te gusta, abrí la tarjeta y podés avanzar al checkout.',
+            products,
+        }
+    }
 
     return {
         reply:
-            `Sí, encontré estas opciones:\n\n${summary}\n\n` +
-            'Decime cuál te gusta y te ayudo a elegir color, material, variante o avanzar con la compra.',
+            'Sí, encontré estas opciones. Podés abrir una tarjeta para ver detalles, colores/materiales disponibles y avanzar con la compra.',
         products,
-    }
-}
-
-async function buildAIProductResponse(message, products, intent, source) {
-    if (!Array.isArray(products) || products.length === 0) {
-        return {
-            reply:
-                'Por ahora no encontré productos cargados que coincidan con esa búsqueda. Probá con otro nombre, color, material o ambiente, por ejemplo: “velador”, “lámpara de escritorio” o “lámpara negra”.',
-            products: [],
-            source,
-        }
-    }
-
-    const context = productsContext(products)
-
-    const ai = await interpretWithAI(
-        `
-Cliente: ${message}
-
-Armá una respuesta breve, vendedora y útil.
-No inventes productos, precios ni stock.
-Usá solo estos productos reales:
-${context}
-    `.trim(),
-        context
-    )
-
-    if (ai?.answer) {
-        return {
-            reply: ai.answer,
-            products,
-            source: ai.source || source,
-        }
-    }
-
-    const fallback = buildFallbackProductResponse(products, intent, message)
-
-    return {
-        ...fallback,
-        source,
     }
 }
 
@@ -652,15 +598,19 @@ async function getBankAccountsResponse(supabase) {
         .limit(10)
 
     if (error || !data?.length) {
-        return 'Podés pagar por transferencia bancaria. Si querés avanzar, te indicamos los datos de pago al finalizar la compra.'
+        return 'Podés pagar desde el checkout. Si elegís transferencia, al finalizar la compra se te indicarán los datos de pago.'
     }
 
-    return data.map((account) => {
-        const alias = account.alias ? `Alias: ${account.alias}` : null
-        const cbu = account.cbu ? `CBU/CVU: ${account.cbu}` : null
-        const holder = account.holder_name ? `Titular: ${account.holder_name}` : null
-        return [account.bank_name, alias, cbu, holder].filter(Boolean).join(' — ')
-    }).join('\n')
+    const accounts = data
+        .map((account) => {
+            const alias = account.alias ? `Alias: ${account.alias}` : null
+            const cbu = account.cbu ? `CBU/CVU: ${account.cbu}` : null
+            const holder = account.holder_name ? `Titular: ${account.holder_name}` : null
+            return [account.bank_name, alias, cbu, holder].filter(Boolean).join(' — ')
+        })
+        .join('\n')
+
+    return `Podés pagar por transferencia usando estos datos:\n\n${accounts}\n\nTambién podés avanzar desde el checkout y elegir la forma de pago disponible.`
 }
 
 export async function POST(request) {
@@ -670,7 +620,7 @@ export async function POST(request) {
 
         if (!message) {
             return NextResponse.json({
-                reply: 'Escribime qué producto estás buscando y te ayudo.',
+                reply: 'Escribime qué lámpara o producto de iluminación estás buscando.',
                 products: [],
             })
         }
@@ -679,18 +629,33 @@ export async function POST(request) {
 
         const localIntent = detectLocalIntent(message)
         const localQuery = cleanTerms(message).join(' ')
-
         const ai = await interpretWithAI(message)
 
-        const intent =
+        let intent =
             ai?.intent && ai.intent !== 'general'
                 ? ai.intent
                 : localIntent
 
-        const aiQuery =
+        if (hasLightingContext(message) && intent === 'general') {
+            intent = 'products'
+        }
+
+        if (hasBuyContext(message)) {
+            intent = 'buy'
+        }
+
+        if (hasPaymentContext(message) && !hasLightingContext(message)) {
+            intent = 'payment'
+        }
+
+        let aiQuery =
             cleanTerms(ai?.query || '').join(' ') ||
             localQuery ||
-            message
+            'lampara'
+
+        if (hasLightingContext(message) && !aiQuery) {
+            aiQuery = 'lampara'
+        }
 
         const variantTerms = Array.isArray(ai?.variant_terms)
             ? ai.variant_terms
@@ -709,38 +674,19 @@ export async function POST(request) {
             hasOpenAI: Boolean(process.env.OPENAI_API_KEY),
         })
 
-        if (intent === 'products' || intent === 'buy' || intent === 'variant_question') {
-            const products = await searchProducts(
-                supabase,
-                aiQuery || message,
-                variantTerms.length ? variantTerms : cleanTerms(message)
-            )
-
-            const response = await buildAIProductResponse(message, products, intent, source)
-
-            return NextResponse.json({
-                reply: response.reply,
-                products: response.products,
-                debug: {
-                    source: response.source || source,
-                    intent,
-                    aiQuery,
-                    variantTerms,
-                    localIntent,
-                    localQuery,
-                    hasGroq: Boolean(process.env.GROQ_API_KEY),
-                    hasOpenAI: Boolean(process.env.OPENAI_API_KEY),
-                },
-            })
-        }
-
-        if (intent === 'bank_accounts') {
+        if (intent === 'payment' || intent === 'bank_accounts') {
             const reply = await getBankAccountsResponse(supabase)
 
             return NextResponse.json({
                 reply,
                 products: [],
-                debug: { source, intent, aiQuery },
+                debug: {
+                    source,
+                    intent,
+                    aiQuery,
+                    hasGroq: Boolean(process.env.GROQ_API_KEY),
+                    hasOpenAI: Boolean(process.env.OPENAI_API_KEY),
+                },
             })
         }
 
@@ -752,26 +698,46 @@ export async function POST(request) {
             })
         }
 
-        if (intent === 'checkout_help') {
+        if (
+            intent === 'products' ||
+            intent === 'featured' ||
+            intent === 'stock' ||
+            intent === 'buy' ||
+            intent === 'variant_question'
+        ) {
+            const products = await searchProducts(
+                supabase,
+                aiQuery,
+                variantTerms,
+                intent,
+                message
+            )
+
+            const response = buildProductResponse(products, intent, message)
+
             return NextResponse.json({
-                reply: 'Para comprar, elegí el producto, seleccioná la variante si corresponde, agregalo al carrito y seguí el checkout. También puedo ayudarte a encontrar la lámpara ideal.',
-                products: [],
-                debug: { source, intent, aiQuery },
+                reply: response.reply,
+                products: response.products,
+                debug: {
+                    source,
+                    intent,
+                    aiQuery,
+                    variantTerms,
+                    localIntent,
+                    localQuery,
+                    productsCount: products.length,
+                    hasGroq: Boolean(process.env.GROQ_API_KEY),
+                    hasOpenAI: Boolean(process.env.OPENAI_API_KEY),
+                },
             })
         }
 
-        const generalAI = await interpretWithAI(
-            `Respondé como asistente vendedor de ecommerce de lámparas. No inventes stock ni precios. Pregunta: ${message}`
-        )
-
         return NextResponse.json({
             reply:
-                generalAI?.answer ||
-                ai?.answer ||
-                'Hola, soy el asistente de 3DLightLab. Puedo ayudarte a encontrar lámparas, colores, materiales, variantes, precios, stock y formas de pago. ¿Qué estás buscando?',
+                'Puedo ayudarte con lámparas, veladores, iluminación, stock, colores, materiales y formas de pago. ¿Qué tipo de lámpara estás buscando?',
             products: [],
             debug: {
-                source: generalAI?.source || source,
+                source,
                 intent,
                 aiQuery,
                 localIntent,
