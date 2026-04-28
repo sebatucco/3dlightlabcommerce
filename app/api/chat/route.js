@@ -455,6 +455,20 @@ async function searchProducts(supabase, rawQuery, rawVariantTerms = []) {
 
     const allTerms = [...productTerms, ...variantTerms]
 
+    console.log('CHAT SEARCH DEBUG:', {
+        rawQuery,
+        rawVariantTerms,
+        productTerms,
+        variantTerms,
+        allTerms,
+        productsCount: products.length,
+        products: products.map((p) => ({
+            name: p.name,
+            stock: p.stock,
+            image_url: p.image_url,
+        })),
+    })
+
     const scoredProducts = products
         .map((product) => {
             const result = scoreProduct(product, productTerms, variantTerms)
@@ -470,9 +484,30 @@ async function searchProducts(supabase, rawQuery, rawVariantTerms = []) {
 
     if (scoredProducts.length > 0) return scoredProducts.slice(0, 6)
 
-    if (isGenericLampSearch(allTerms)) {
+    const genericTerms = [
+        'lampara',
+        'lamp',
+        'velador',
+        'luz',
+        'luces',
+        'iluminacion',
+        'table',
+        'mesa',
+        'escritorio',
+    ]
+
+    const isGeneric = allTerms.some((term) =>
+        genericTerms.includes(normalize(term))
+    )
+
+    if (isGeneric) {
         return products
             .filter((product) => Number(product?.stock || 0) > 0)
+            .map((product) => ({
+                ...product,
+                matched_variants: [],
+                _score: product.featured ? 2 : 1,
+            }))
             .sort((a, b) => {
                 if (a.featured && !b.featured) return -1
                 if (!a.featured && b.featured) return 1
@@ -483,7 +518,6 @@ async function searchProducts(supabase, rawQuery, rawVariantTerms = []) {
 
     return []
 }
-
 function summarizeVariants(product) {
     const variants = product.matched_variants?.length
         ? product.matched_variants
@@ -571,6 +605,15 @@ function buildFallbackProductResponse(products, intent = 'products', query = '')
 }
 
 async function buildAIProductResponse(message, products, intent, source) {
+    if (!Array.isArray(products) || products.length === 0) {
+        return {
+            reply:
+                'Por ahora no encontré productos cargados que coincidan con esa búsqueda. Probá con otro nombre, color, material o ambiente, por ejemplo: “velador”, “lámpara de escritorio” o “lámpara negra”.',
+            products: [],
+            source,
+        }
+    }
+
     const context = productsContext(products)
 
     const ai = await interpretWithAI(
