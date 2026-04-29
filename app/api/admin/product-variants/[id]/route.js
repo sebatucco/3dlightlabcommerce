@@ -11,9 +11,7 @@ function isValidUuid(value) {
 }
 
 function normalizeSku(value) {
-    return String(value || '')
-        .trim()
-        .toUpperCase()
+    return String(value || '').trim().toUpperCase()
 }
 
 function toSafeNumber(value, fallback = null) {
@@ -33,12 +31,8 @@ async function resolveId(context) {
 }
 
 function buildPayload(body) {
-    const sku = normalizeSku(body?.sku || '')
-    const name = body?.name ? String(body.name).trim() : null
-
     return {
-        sku,
-        name,
+        name: body?.name ? String(body.name).trim() : null,
         price: toSafeNumber(body?.price, null),
         compare_at_price: toSafeNumber(body?.compare_at_price, null),
         stock: Math.max(0, toSafeInteger(body?.stock, 0)),
@@ -55,6 +49,73 @@ function normalizeOptionValues(values) {
             option_value_id: String(item?.option_value_id || '').trim(),
         }))
         .filter((item) => item.option_id && item.option_value_id)
+}
+
+async function validateOptionValuesForProduct(supabase, productId, optionValues) {
+    if (!optionValues.length) return { ok: true }
+
+    const optionIds = [...new Set(optionValues.map((item) => item.option_id))]
+    const valueIds = [...new Set(optionValues.map((item) => item.option_value_id))]
+
+    const { data: options, error: optionsError } = await supabase
+        .from('product_options')
+        .select('id, product_id, active, deleted_at')
+        .in('id', optionIds)
+
+    if (optionsError) {
+        return { ok: false, error: optionsError.message }
+    }
+
+    const validOptions = new Set(
+        (options || [])
+            .filter(
+                (option) =>
+                    option.product_id === productId &&
+                    option.active === true &&
+                    option.deleted_at == null
+            )
+            .map((option) => option.id)
+    )
+
+    if (validOptions.size !== optionIds.length) {
+        return {
+            ok: false,
+            error: 'Una o más opciones no pertenecen al producto de esta variante',
+        }
+    }
+
+    const { data: values, error: valuesError } = await supabase
+        .from('product_option_values')
+        .select('id, option_id, active, deleted_at')
+        .in('id', valueIds)
+
+    if (valuesError) {
+        return { ok: false, error: valuesError.message }
+    }
+
+    const validValuePairs = new Set(
+        (values || [])
+            .filter(
+                (value) =>
+                    validOptions.has(value.option_id) &&
+                    value.active === true &&
+                    value.deleted_at == null
+            )
+            .map((value) => `${value.option_id}:${value.id}`)
+    )
+
+    const allPairsValid = optionValues.every((item) =>
+        validValuePairs.has(`${item.option_id}:${item.option_value_id}`)
+    )
+
+    if (!allPairsValid) {
+        return {
+            ok: false,
+            error: 'Uno o más valores no pertenecen a la opción indicada',
+        }
+    }
+
+    return { ok: true }
 }
 
 async function replaceVariantOptionValues(supabase, variantId, optionValues) {
@@ -88,6 +149,27 @@ async function replaceVariantOptionValues(supabase, variantId, optionValues) {
     return { ok: true }
 }
 
+async function getFullVariant(supabase, id) {
+    const { data, error } = await supabase
+        .from('product_variants')
+        .select(`
+      *,
+      products(id,name,slug,sku),
+      product_variant_option_values(
+        id,
+        option_id,
+        option_value_id,
+        product_options(id,name,slug),
+        product_option_values(id,value,slug)
+      )
+    `)
+        .eq('id', id)
+        .single()
+
+    if (error) return null
+    return data
+}
+
 export async function PUT(request, context) {
     const auth = await requireAdmin(request)
     if (!auth.authorized) return auth.response
@@ -103,12 +185,11 @@ export async function PUT(request, context) {
         const payload = buildPayload(body)
         const optionValues = normalizeOptionValues(body?.option_values)
 
-        if (!payload.sku) {
-            return NextResponse.json({ error: 'El SKU de la variante es obligatorio' }, { status: 400 })
-        }
-
         if (payload.price != null && payload.price < 0) {
-            return NextResponse.json({ error: 'El precio no puede ser negativo' }, { status: 400 })
+            return NextResponse.json(
+                { error: 'El precio no puede ser negativo' },
+                { status: 400 }
+            )
         }
 
         if (payload.compare_at_price != null && payload.compare_at_price < 0) {
@@ -122,7 +203,7 @@ export async function PUT(request, context) {
 
         const { data: existing, error: existingError } = await supabase
             .from('product_variants')
-            .select('id, deleted_at')
+            .select('id, product_id, deleted_at')
             .eq('id', id)
             .maybeSingle()
 
@@ -132,6 +213,16 @@ export async function PUT(request, context) {
 
         if (!existing || existing.deleted_at) {
             return NextResponse.json({ error: 'Variante no encontrada' }, { status: 404 })
+        }
+
+        const validation = await validateOptionValuesForProduct(
+            supabase,
+            existing.product_id,
+            optionValues
+        )
+
+        if (!validation.ok) {
+            return NextResponse.json({ error: validation.error }, { status: 400 })
         }
 
         const { data: skuRow, error: skuError } = await supabase
@@ -147,7 +238,10 @@ export async function PUT(request, context) {
         }
 
         if (skuRow) {
-            return NextResponse.json({ error: 'Ya existe otra variante con ese SKU' }, { status: 400 })
+            return NextResponse.json(
+                { error: 'Ya existe otra variante con ese SKU' },
+                { status: 400 }
+            )
         }
 
         const { error } = await supabase
@@ -160,33 +254,19 @@ export async function PUT(request, context) {
             return NextResponse.json({ error: error.message }, { status: 500 })
         }
 
-        const optionsResult = await replaceVariantOptionValues(supabase, id, optionValues)
+        const optionsResult = await replaceVariantOptionValues(
+            supabase,
+            id,
+            optionValues
+        )
 
         if (!optionsResult.ok) {
             return NextResponse.json({ error: optionsResult.error }, { status: 500 })
         }
 
-        const { data, error: fullError } = await supabase
-            .from('product_variants')
-            .select(`
-        *,
-        products(id,name,slug,sku),
-        product_variant_option_values(
-          id,
-          option_id,
-          option_value_id,
-          product_options(id,name,slug),
-          product_option_values(id,value,slug)
-        )
-      `)
-            .eq('id', id)
-            .single()
+        const data = await getFullVariant(supabase, id)
 
-        if (fullError) {
-            return NextResponse.json({ ok: true })
-        }
-
-        return NextResponse.json(data)
+        return NextResponse.json(data || { ok: true })
     } catch (error) {
         return NextResponse.json(
             { error: error?.message || 'No se pudo actualizar la variante' },
