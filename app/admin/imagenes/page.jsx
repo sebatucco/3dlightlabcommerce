@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { RefreshCw, Search, Trash2, Upload } from 'lucide-react'
 
 const initialForm = {
+    upload_scope: 'base',
     product_id: '',
     variant_id: '',
     image_url: '',
@@ -11,6 +12,7 @@ const initialForm = {
     sort_order: 0,
     media_type: 'image',
     use_case: 'catalog',
+    bucket: '',
     is_primary: false,
 }
 
@@ -102,13 +104,14 @@ export default function AdminImagenesPage() {
     function selectImage(image) {
         setEditingId(image.id)
         setForm({
+            upload_scope: image.variant_id ? 'variant' : 'base',
             product_id: image.product_id || '',
             variant_id: image.variant_id || '',
             image_url: image.image_url || '',
             alt_text: image.alt_text || '',
             sort_order: Number(image.sort_order || 0),
             media_type: image.media_type || 'image',
-            use_case: image.use_case || 'catalog',
+            use_case: image.variant_id ? 'detail' : image.use_case || 'catalog',
             is_primary: Boolean(image.is_primary),
         })
     }
@@ -122,15 +125,32 @@ export default function AdminImagenesPage() {
         }
 
         try {
+            if (form.upload_scope === 'variant' && !form.variant_id) {
+                setError('Seleccioná una variante antes de subir la imagen')
+                return
+            }
+
+            if (form.upload_scope === 'variant' && form.media_type !== 'image') {
+                setError('Las variantes solo pueden tener imágenes')
+                return
+            }
+
             setUploading(true)
             setError('')
             setMessage('')
 
+            const uploadScope = form.upload_scope === 'variant' ? 'variant' : 'base'
+            const useCase = uploadScope === 'variant' ? 'detail' : form.use_case
+            const mediaType = uploadScope === 'variant' ? 'image' : form.media_type
+
             const uploadForm = new FormData()
             uploadForm.append('file', file)
-            uploadForm.append('media_type', form.media_type)
+            uploadForm.append('media_type', mediaType)
             uploadForm.append('product_id', form.product_id)
-            if (form.variant_id) {
+            uploadForm.append('use_case', useCase)
+            uploadForm.append('upload_scope', uploadScope)
+
+            if (uploadScope === 'variant') {
                 uploadForm.append('variant_id', form.variant_id)
             }
 
@@ -149,9 +169,13 @@ export default function AdminImagenesPage() {
                 ...prev,
                 image_url: data.publicUrl,
                 alt_text: prev.alt_text || getFileName(data.publicUrl),
+                bucket: data.bucket || prev.bucket,
+                use_case: data.use_case || useCase,
+                media_type: data.media_type || mediaType,
+                variant_id: data.variant_id || prev.variant_id,
             }))
 
-            setMessage('Archivo subido correctamente')
+            setMessage(`Archivo subido correctamente${data.bucket ? ` a ${data.bucket}` : ''}`)
         } catch (err) {
             setError(err.message || 'Error subiendo archivo')
         } finally {
@@ -169,12 +193,12 @@ export default function AdminImagenesPage() {
 
             const payload = {
                 product_id: form.product_id,
-                variant_id: form.variant_id || null,
+                variant_id: form.upload_scope === 'variant' ? form.variant_id : null,
                 image_url: String(form.image_url || '').trim(),
                 alt_text: String(form.alt_text || '').trim(),
                 sort_order: Number(form.sort_order || 0),
-                media_type: form.media_type,
-                use_case: form.use_case || null,
+                media_type: form.upload_scope === 'variant' ? 'image' : form.media_type,
+                use_case: form.upload_scope === 'variant' ? 'detail' : form.use_case || null,
                 is_primary: Boolean(form.is_primary),
             }
 
@@ -385,7 +409,18 @@ export default function AdminImagenesPage() {
 
                         <select
                             value={form.variant_id}
-                            onChange={(e) => setForm((prev) => ({ ...prev, variant_id: e.target.value }))}
+                            onChange={(e) => {
+                                const variantId = e.target.value
+                                setForm((prev) => ({
+                                    ...prev,
+                                    variant_id: variantId,
+                                    upload_scope: variantId ? 'variant' : 'base',
+                                    media_type: variantId ? 'image' : prev.media_type,
+                                    use_case: variantId ? 'detail' : 'catalog',
+                                    image_url: '',
+                                    bucket: '',
+                                }))
+                            }}
                             disabled={!form.product_id}
                             className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
                         >
