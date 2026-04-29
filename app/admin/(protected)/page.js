@@ -30,6 +30,7 @@ const initialProduct = {
 }
 const initialImage = {
   product_id: '',
+  variant_id: '',
   image_url: '',
   alt_text: '',
   sort_order: 0,
@@ -205,6 +206,7 @@ export default function AdminPage() {
     setEditingImageId(image.id)
     setImageForm({
       product_id: image.product_id || '',
+      variant_id: image.variant_id || '',
       image_url: image.image_url || '',
       alt_text: image.alt_text || '',
       sort_order: Number(image.sort_order || 0),
@@ -546,7 +548,17 @@ export default function AdminPage() {
     { id: 'orders-route', label: 'Pedidos', icon: ShoppingCart },
     { id: 'contacts', label: 'Contactos', icon: Mail },
   ]
-
+  const variantOptions = useMemo(
+    () =>
+      products.flatMap((p) =>
+        (p.product_variants || []).map((v) => ({
+          id: v.id,
+          label: `${p.name} → ${v.name || v.sku}`,
+          product_id: p.id,
+        }))
+      ),
+    [products]
+  )
   const categoryOptions = useMemo(
     () => categories.map((item) => ({ id: item.id, label: item.name, sku_prefix: item.sku_prefix || null })),
     [categories]
@@ -1179,6 +1191,33 @@ export default function AdminPage() {
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#143047]">
+                      Variante (opcional)
+                    </label>
+                    <select
+                      className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3"
+                      value={imageForm.variant_id}
+                      onChange={(e) =>
+                        setImageForm({ ...imageForm, variant_id: e.target.value })
+                      }
+                    >
+                      <option value="">Imagen del producto base</option>
+
+                      {variantOptions
+                        .filter((v) => v.product_id === imageForm.product_id)
+                        .map((variant) => (
+                          <option key={variant.id} value={variant.id}>
+                            {variant.label}
+                          </option>
+                        ))}
+                    </select>
+
+                    <p className="mt-1 text-xs text-[#6d7e8b]">
+                      Si seleccionás una variante, la imagen será específica de esa variante.
+                    </p>
                   </div>
 
                   <div>

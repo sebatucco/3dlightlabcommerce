@@ -5,6 +5,7 @@ import { RefreshCw, Search, Trash2, Upload } from 'lucide-react'
 
 const initialForm = {
     product_id: '',
+    variant_id: '',
     image_url: '',
     alt_text: '',
     sort_order: 0,
@@ -49,6 +50,15 @@ export default function AdminImagenesPage() {
     const [typeFilter, setTypeFilter] = useState('all')
     const [useCaseFilter, setUseCaseFilter] = useState('all')
     const [form, setForm] = useState(initialForm)
+    const variantOptions = useMemo(() => {
+        return products.flatMap((product) =>
+            (product.product_variants || product.variants || []).map((variant) => ({
+                id: variant.id,
+                product_id: product.id,
+                label: `${variant.name || variant.sku || 'Variante'}${variant.sku ? ` · ${variant.sku}` : ''}`,
+            }))
+        )
+    }, [products])
 
     async function loadData() {
         try {
@@ -93,6 +103,7 @@ export default function AdminImagenesPage() {
         setEditingId(image.id)
         setForm({
             product_id: image.product_id || '',
+            variant_id: image.variant_id || '',
             image_url: image.image_url || '',
             alt_text: image.alt_text || '',
             sort_order: Number(image.sort_order || 0),
@@ -119,6 +130,9 @@ export default function AdminImagenesPage() {
             uploadForm.append('file', file)
             uploadForm.append('media_type', form.media_type)
             uploadForm.append('product_id', form.product_id)
+            if (form.variant_id) {
+                uploadForm.append('variant_id', form.variant_id)
+            }
 
             const response = await fetch('/api/admin/storage/upload', {
                 method: 'POST',
@@ -155,6 +169,7 @@ export default function AdminImagenesPage() {
 
             const payload = {
                 product_id: form.product_id,
+                variant_id: form.variant_id || null,
                 image_url: String(form.image_url || '').trim(),
                 alt_text: String(form.alt_text || '').trim(),
                 sort_order: Number(form.sort_order || 0),
@@ -351,7 +366,13 @@ export default function AdminImagenesPage() {
 
                         <select
                             value={form.product_id}
-                            onChange={(e) => setForm((prev) => ({ ...prev, product_id: e.target.value }))}
+                            onChange={(e) =>
+                                setForm((prev) => ({
+                                    ...prev,
+                                    product_id: e.target.value,
+                                    variant_id: '',
+                                }))
+                            }
                             className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none"
                         >
                             <option value="">Seleccioná un producto</option>
@@ -360,6 +381,22 @@ export default function AdminImagenesPage() {
                                     {product.name} {product.sku ? `· ${product.sku}` : ''}
                                 </option>
                             ))}
+                        </select>
+
+                        <select
+                            value={form.variant_id}
+                            onChange={(e) => setForm((prev) => ({ ...prev, variant_id: e.target.value }))}
+                            disabled={!form.product_id}
+                            className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
+                        >
+                            <option value="">Imagen del producto base</option>
+                            {variantOptions
+                                .filter((variant) => variant.product_id === form.product_id)
+                                .map((variant) => (
+                                    <option key={variant.id} value={variant.id}>
+                                        {variant.label}
+                                    </option>
+                                ))}
                         </select>
 
                         <div className="grid gap-3 sm:grid-cols-2">
@@ -496,6 +533,11 @@ export default function AdminImagenesPage() {
                                             <div className="min-w-0">
                                                 <p className="font-bold text-[#143047]">
                                                     {image.products?.name || 'Producto'}
+                                                </p>
+                                                <p className="mt-1 text-xs font-semibold text-[#5e89a6]">
+                                                    {image.variant_id
+                                                        ? `Variante: ${image.product_variants?.name || image.product_variants?.sku || image.variant_id}`
+                                                        : 'Imagen base del producto'}
                                                 </p>
                                                 <p className="mt-1 text-sm text-[#4e6475]">
                                                     Archivo: {getFileName(image.image_url) || '—'}
