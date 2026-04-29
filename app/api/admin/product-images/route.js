@@ -14,8 +14,7 @@ export async function GET(request) {
       .from('product_images')
       .select(`
         *,
-        products(id,name,slug),
-        product_variants(id,sku,name)
+        products(id,name,slug)
       `)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false })
@@ -33,6 +32,7 @@ export async function GET(request) {
     const { data, error } = await query
 
     if (error) {
+      console.log('PRODUCT IMAGES GET ERROR:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -40,6 +40,8 @@ export async function GET(request) {
       headers: { 'Cache-Control': 'no-store, max-age=0' },
     })
   } catch (error) {
+    console.log('PRODUCT IMAGES GET CATCH:', error)
+
     return NextResponse.json(
       { error: error?.message || 'No se pudo obtener la media del catálogo' },
       { status: 500 }
