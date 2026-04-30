@@ -26,10 +26,32 @@ function normalizeCategory(product) {
   }
 }
 
+function buildBaseProducts(products) {
+  const normalized = Array.isArray(products) ? products : []
+  const skuSet = new Set(
+    normalized
+      .map((product) => String(product?.sku || '').trim().toUpperCase())
+      .filter(Boolean)
+  )
+
+  return normalized.filter((product) => {
+    const sku = String(product?.sku || '').trim().toUpperCase()
+    if (!sku) return true
+
+    const variantLike = sku.match(/^(.*)-([0-9]{3})$/)
+    if (!variantLike) return true
+
+    const possibleBaseSku = String(variantLike[1] || '').trim()
+    if (!possibleBaseSku) return true
+
+    return !skuSet.has(possibleBaseSku)
+  })
+}
+
 export default function CatalogClient({ products = [], categories = [] }) {
   const [selectedCategory, setSelectedCategory] = useState('all')
 
-  const safeProducts = Array.isArray(products) ? products : []
+  const safeProducts = useMemo(() => buildBaseProducts(products), [products])
   const safeCategories = Array.isArray(categories) ? categories : []
 
   const availableCategories = useMemo(() => {

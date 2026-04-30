@@ -2,7 +2,6 @@
 
 import { ShoppingCart, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
-import { useCart } from '@/lib/store'
 import { formatPrice } from '@/lib/mercadopago'
 import { siteConfig } from '@/lib/site'
 
@@ -34,17 +33,9 @@ function getCategoryLabel(product) {
 }
 
 export default function ProductCard({ product }) {
-  const { addToCart, setIsOpen } = useCart()
-
   const imageSrc = getCatalogImage(product)
   const categoryLabel = getCategoryLabel(product)
-
-  const handleAddToCart = (event) => {
-    event.preventDefault()
-    event.stopPropagation()
-    addToCart(product)
-    setIsOpen(true)
-  }
+  const detailHref = `/producto/${product.slug || product.id}`
 
   const handleWhatsApp = (event) => {
     event.preventDefault()
@@ -58,7 +49,7 @@ export default function ProductCard({ product }) {
 
   return (
     <div className="h-full">
-      <Link href={`/producto/${product.slug || product.id}`} className="block h-full">
+      <Link href={detailHref} className="block h-full">
         <article className="flex h-full flex-col overflow-hidden rounded-[28px] border border-[#e7dccd] bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg">
           <div className="relative h-56 w-full overflow-hidden bg-[#f7f1e8]">
             <img
@@ -74,11 +65,6 @@ export default function ProductCard({ product }) {
                 </span>
               ) : null}
 
-              {product.stock === 0 ? (
-                <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-[#143047]">
-                  Agotado
-                </span>
-              ) : null}
             </div>
           </div>
 
@@ -97,36 +83,15 @@ export default function ProductCard({ product }) {
               {product.short_description || product.description}
             </p>
 
-            <div className="mt-4 flex items-end justify-between gap-3">
-              <div>
-                <span className="text-xl font-bold text-[#b7793e]">
-                  {formatPrice(product.price)}
-                </span>
-
-                {(product.originalPrice || product.compare_at_price) &&
-                  (product.originalPrice || product.compare_at_price) > product.price ? (
-                  <p className="text-sm text-[#8b8b8b] line-through">
-                    {formatPrice(product.originalPrice || product.compare_at_price)}
-                  </p>
-                ) : null}
-              </div>
-
-              <span className="rounded-full bg-[#f7f1e8] px-3 py-1 text-xs font-semibold text-[#143047]">
-                Stock: {product.stock ?? 0}
-              </span>
-            </div>
-
             <div className="mt-auto flex gap-3 pt-5">
-              <button
-                onClick={handleAddToCart}
-                disabled={product.stock === 0}
-                className="flex-1 rounded-full bg-[#143047] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#214a69] disabled:cursor-not-allowed disabled:opacity-60"
+              <span
+                className="flex-1 rounded-full bg-[#143047] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#214a69]"
               >
                 <span className="inline-flex items-center justify-center gap-2">
                   <ShoppingCart className="h-4 w-4" />
-                  Agregar
+                  Ver detalle
                 </span>
-              </button>
+              </span>
 
               <button
                 onClick={handleWhatsApp}
