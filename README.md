@@ -29,6 +29,7 @@ Copiá `.env.example` a `.env.local` y completá:
 - `NEXT_PUBLIC_SITE_URL`
 - `NEXT_PUBLIC_WHATSAPP_NUMBER`
 - `ADMIN_SESSION_SECRET`
+- `METRICS_PERSISTENCE_ENABLED` (opcional)
 
 ## Ejecutar
 ```bash
@@ -40,6 +41,30 @@ npm run dev
 ```bash
 npm run build
 npm start
+```
+
+## Observabilidad
+- Todas las requests pasan por `proxy.js` y reciben `x-request-id`.
+- Endpoints críticos registran logs estructurados JSON (inicio, fin, error, latencia).
+- Healthcheck: `GET /api/health`.
+- Métricas de API (requiere admin): `GET /api/metrics`.
+- Persistencia de métricas en Supabase:
+  - crear tabla con `supabase/04-api-metrics.sql`
+  - `METRICS_PERSISTENCE_ENABLED=true`
+- Alertas automáticas (opcional):
+  - `ALERT_MIN_SAMPLES`, `ALERT_WARN_ERROR_RATE`, `ALERT_CRITICAL_ERROR_RATE`
+  - `ALERT_WARN_AVG_LATENCY_MS`, `ALERT_CRITICAL_AVG_LATENCY_MS`
+  - webhook: `ALERT_WEBHOOK_URL` y `ALERT_WEBHOOK_COOLDOWN_MS`
+- Rate limiting distribuido (opcional):
+  - `UPSTASH_REDIS_REST_URL`
+  - `UPSTASH_REDIS_REST_TOKEN`
+- Hardening de webhook Mercado Pago (opcional):
+  - `MERCADOPAGO_WEBHOOK_SECRET` (token en query `?token=` o header `x-webhook-token`)
+  - `MERCADOPAGO_WEBHOOK_IP_ALLOWLIST` (IPs separadas por coma)
+  - Firma HMAC-SHA256: usa el mismo secret para verificar header `x-signature`
+- Tests:
+```bash
+npm run test
 ```
 
 ## Nota técnica

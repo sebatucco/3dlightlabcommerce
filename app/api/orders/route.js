@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { rateLimits } from '@/lib/rate-limiter'
+import { withApiObservability } from '@/lib/observability'
 
 export const runtime = 'nodejs'
 
@@ -262,7 +264,15 @@ async function decrementStock(supabase, orderItems, dbProducts) {
 }
 
 export async function POST(request) {
-  try {
+  return withApiObservability(request, '/api/orders', async () => {
+    const rateLimit = await rateLimits.orders(request)
+    if (rateLimit) {
+      return NextResponse.json(rateLimit.body, {
+        status: rateLimit.status,
+        headers: rateLimit.headers,
+      })
+    }
+
     const body = await request.json().catch(() => null)
 
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -355,12 +365,6 @@ export async function POST(request) {
       return NextResponse.json({ error: insertItemsResult.error }, { status: 500 })
     }
 
-    const decrementStockResult = await decrementStock(supabase, orderItems, dbProducts)
-
-    if (decrementStockResult.error) {
-      return NextResponse.json({ error: decrementStockResult.error }, { status: 500 })
-    }
-
     return NextResponse.json(
       {
         ok: true,
@@ -371,10 +375,5 @@ export async function POST(request) {
       },
       { status: 201 }
     )
-  } catch (error) {
-    return NextResponse.json(
-      { error: error?.message || 'No se pudo crear la orden' },
-      { status: 500 }
-    )
-  }
+  })
 }

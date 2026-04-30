@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { setAdminCookie } from '@/lib/admin-auth'
 import { createAdminSupabaseClient } from '@/lib/admin-supabase'
+import { rateLimits } from '@/lib/rate-limiter'
+import { withApiObservability } from '@/lib/observability'
 
 export const runtime = 'nodejs'
 
@@ -22,7 +24,15 @@ function getAuthClient() {
 }
 
 export async function POST(request) {
-  try {
+  return withApiObservability(request, '/api/admin/login', async () => {
+    const rateLimit = await rateLimits.strict(request)
+    if (rateLimit) {
+      return NextResponse.json(rateLimit.body, {
+        status: rateLimit.status,
+        headers: rateLimit.headers,
+      })
+    }
+
     const body = await request.json().catch(() => ({}))
     const accessToken = String(body?.access_token || '').trim()
 
@@ -87,10 +97,5 @@ export async function POST(request) {
       email: profile.email || authData.user.email || '',
       role: profile.role,
     })
-  } catch (error) {
-    return NextResponse.json(
-      { error: error?.message || 'No se pudo iniciar sesión' },
-      { status: 500 }
-    )
-  }
+  })
 }

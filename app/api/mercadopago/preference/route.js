@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { rateLimits } from '@/lib/rate-limiter'
+import { withApiObservability } from '@/lib/observability'
 
 export const runtime = 'nodejs'
 
@@ -167,7 +169,15 @@ async function persistExternalReferenceIfNeeded(supabase, order) {
 }
 
 export async function POST(request) {
-  try {
+  return withApiObservability(request, '/api/mercadopago/preference', async () => {
+    const rateLimit = await rateLimits.moderate(request)
+    if (rateLimit) {
+      return NextResponse.json(rateLimit.body, {
+        status: rateLimit.status,
+        headers: rateLimit.headers,
+      })
+    }
+
     const accessToken = getMercadoPagoAccessToken()
 
     if (!accessToken) {
@@ -244,10 +254,5 @@ export async function POST(request) {
       external_reference: normalizedOrder.external_reference,
       order_id: normalizedOrder.id,
     })
-  } catch (error) {
-    return NextResponse.json(
-      { error: error?.message || 'No se pudo crear la preferencia' },
-      { status: 500 }
-    )
-  }
+  })
 }

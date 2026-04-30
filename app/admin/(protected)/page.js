@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
+  Activity,
   BarChart3,
   FolderTree,
   Image as ImageIcon,
@@ -546,6 +547,7 @@ export default function AdminPage() {
     { id: 'images-route', label: 'Imágenes', icon: ImageIcon },
     { id: 'bank-accounts', label: 'Cuentas bancarias', icon: Landmark },
     { id: 'orders-route', label: 'Pedidos', icon: ShoppingCart },
+    { id: 'metrics-route', label: 'Métricas API', icon: Activity },
     { id: 'contacts', label: 'Contactos', icon: Mail },
   ]
   const variantOptions = useMemo(
@@ -628,6 +630,11 @@ export default function AdminPage() {
 
                   if (tab.id === 'variants-route') {
                     window.location.href = '/admin/variantes'
+                    return
+                  }
+
+                  if (tab.id === 'metrics-route') {
+                    window.location.href = '/admin/metricas'
                     return
                   }
 

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminSupabaseClient } from '@/lib/admin-supabase'
+import { rateLimits } from '@/lib/rate-limiter'
+import { withApiObservability, logError } from '@/lib/observability'
 
 export const dynamic = 'force-dynamic'
 
@@ -311,8 +313,17 @@ async function getPaymentReply(supabase) {
 }
 
 export async function POST(request) {
+  return withApiObservability(request, '/api/chat', async () => {
+    const rateLimit = await rateLimits.chat(request)
+    if (rateLimit) {
+      return NextResponse.json(rateLimit.body, {
+        status: rateLimit.status,
+        headers: rateLimit.headers,
+      })
+    }
+
     try {
-        const body = await request.json().catch(() => ({}))
+      const body = await request.json().catch(() => ({}))
         const message = String(body?.message || '').trim()
 
         if (!message) {
@@ -381,12 +392,15 @@ export async function POST(request) {
             },
         })
     } catch (error) {
-        console.log('ERROR CHAT:', error)
+      logError('chat.request.error', {
+        error: error?.message || 'Unknown error',
+      })
 
-        return NextResponse.json({
-            reply: 'Hubo un problema procesando tu consulta.',
-            products: [],
-            error: process.env.NODE_ENV === 'development' ? error?.message : String(error?.message || error),
-        }, { status: 200 })
+      return NextResponse.json({
+        reply: 'Hubo un problema procesando tu consulta.',
+        products: [],
+        error: process.env.NODE_ENV === 'development' ? error?.message : String(error?.message || error),
+      }, { status: 200 })
     }
+  })
 }

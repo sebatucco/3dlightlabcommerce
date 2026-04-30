@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /checkout/
+
+Sitemap: https://tu-sitio.netlify.app/sitemap.xml

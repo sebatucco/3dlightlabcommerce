@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { fallbackProducts } from '@/lib/site'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 300
 
 function getSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -157,6 +158,15 @@ function buildFallback(categoryFilter) {
   return products.filter((item) => item.category_slug === value)
 }
 
+function responseCached(payload, status = 200) {
+  return NextResponse.json(payload, {
+    status,
+    headers: {
+      'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+    },
+  })
+}
+
 function responseNoStore(payload, status = 200) {
   return NextResponse.json(payload, {
     status,
@@ -246,7 +256,7 @@ export async function GET(request) {
       ? normalizedProducts.filter((item) => item.category_slug === normalizedFilter)
       : normalizedProducts
 
-    return responseNoStore({
+    return responseCached({
       products,
       categories: normalizedCategories,
       fallback: false,

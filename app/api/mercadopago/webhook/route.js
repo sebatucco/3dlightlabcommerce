@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { withApiObservability } from '@/lib/observability'
 
 export const runtime = 'nodejs'
 
@@ -34,6 +35,54 @@ function getMercadoPagoAccessToken() {
     process.env.MERCADO_PAGO_ACCESS_TOKEN ||
     ''
   ).trim()
+}
+
+function getClientIp(req) {
+  const forwarded = req.headers.get('x-forwarded-for') || ''
+  const realIp = req.headers.get('x-real-ip') || ''
+  const ip = (forwarded.split(',')[0] || realIp || '').trim()
+  return ip
+}
+
+function isWebhookIpAllowed(req) {
+  const rawAllowlist = String(process.env.MERCADOPAGO_WEBHOOK_IP_ALLOWLIST || '').trim()
+  if (!rawAllowlist) return true
+
+  const ip = getClientIp(req)
+  if (!ip) return false
+
+  const allowlist = rawAllowlist
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  return allowlist.includes(ip)
+}
+
+function isWebhookTokenValid(req) {
+  const secret = String(process.env.MERCADOPAGO_WEBHOOK_SECRET || '').trim()
+  if (!secret) return true
+
+  const url = new URL(req.url)
+  const tokenFromQuery = String(url.searchParams.get('token') || '').trim()
+  const tokenFromHeader = String(req.headers.get('x-webhook-token') || '').trim()
+
+  return tokenFromQuery === secret || tokenFromHeader === secret
+}
+
+async function verifyWebhookSignature(req, rawBody) {
+  const secret = String(process.env.MERCADOPAGO_WEBHOOK_SECRET || '').trim()
+  if (!secret) return true
+
+  const signatureHeader = req.headers.get('x-signature') || ''
+  if (!signatureHeader) return false
+
+  const crypto = await import('crypto')
+  const hmac = crypto.createHmac('sha256', secret)
+  hmac.update(rawBody, 'utf8')
+  const computedSignature = hmac.digest('hex')
+
+  return signatureHeader === computedSignature
 }
 
 async function fetchMercadoPagoPayment(paymentId, accessToken) {
@@ -176,6 +225,42 @@ async function decreaseStockForApprovedPayment(supabase, order) {
   return { value: true }
 }
 
+async function restoreStockForRejectedPayment(supabase, order) {
+  const itemsResult = await getOrderItems(supabase, order.id)
+  if (itemsResult.error) return itemsResult
+
+  for (const item of itemsResult.value) {
+    const { data: product, error: productError } = await supabase
+      .from('products')
+      .select('id, stock, name')
+      .eq('id', item.product_id)
+      .single()
+
+    if (productError || !product) continue
+
+    const currentStock = Number(product.stock ?? 0)
+    const quantity = Number(item.quantity ?? 0)
+
+    if (!Number.isFinite(quantity) || quantity <= 0) continue
+
+    const { error: stockUpdateError } = await supabase
+      .from('products')
+      .update({ stock: currentStock + quantity })
+      .eq('id', product.id)
+
+    if (stockUpdateError) {
+      return {
+        error: NextResponse.json(
+          { error: `No se pudo restaurar stock para ${product.name}` },
+          { status: 500 }
+        ),
+      }
+    }
+  }
+
+  return { value: true }
+}
+
 async function updateOrderFromPayment(supabase, order, paymentInfo, normalizedStatus) {
   const updatePayload = {
     status: normalizedStatus,
@@ -205,9 +290,23 @@ async function updateOrderFromPayment(supabase, order, paymentInfo, normalizedSt
 
 async function handleWebhook(req) {
   try {
+    if (!isWebhookIpAllowed(req)) {
+      return NextResponse.json({ error: 'IP no permitida para webhook' }, { status: 403 })
+    }
+
+    if (!isWebhookTokenValid(req)) {
+      return NextResponse.json({ error: 'Webhook token inválido' }, { status: 401 })
+    }
+
+    const rawBody = await req.text().catch(() => '')
+    const signatureValid = await verifyWebhookSignature(req, rawBody)
+    if (!signatureValid) {
+      return NextResponse.json({ error: 'Firma de webhook inválida' }, { status: 401 })
+    }
+
     const url = new URL(req.url)
     const type = extractWebhookType(url)
-    const body = await req.json().catch(() => null)
+    const body = rawBody ? JSON.parse(rawBody) : null
     const paymentId = extractPaymentId(body, url)
 
     if (type !== 'payment' || !paymentId) {
@@ -252,6 +351,11 @@ async function handleWebhook(req) {
       if (stockResult.error) return stockResult.error
     }
 
+    if (normalizedStatus === 'rejected' && wasAlreadyApproved) {
+      const restoreResult = await restoreStockForRejectedPayment(supabase, order)
+      if (restoreResult.error) return restoreResult.error
+    }
+
     if (wasAlreadyApproved && samePaymentAlreadyLinked && normalizedStatus === 'approved') {
       return NextResponse.json({ ok: true, skipped: true })
     }
@@ -275,9 +379,9 @@ async function handleWebhook(req) {
 }
 
 export async function POST(req) {
-  return handleWebhook(req)
+  return withApiObservability(req, '/api/mercadopago/webhook[POST]', async () => handleWebhook(req))
 }
 
 export async function GET(req) {
-  return handleWebhook(req)
+  return withApiObservability(req, '/api/mercadopago/webhook[GET]', async () => handleWebhook(req))
 }

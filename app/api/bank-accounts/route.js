@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 300
 
 function getSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -32,7 +33,7 @@ export async function GET() {
   if (!supabase) {
     return NextResponse.json(
       { accounts: [], error: 'Supabase no configurado' },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } }
     )
   }
 
@@ -48,18 +49,18 @@ export async function GET() {
     if (error) {
       return NextResponse.json(
         { accounts: [], error: error.message },
-        { status: 500, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+        { status: 500, headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } }
       )
     }
 
     return NextResponse.json(
       { accounts: (data || []).map(normalizeBankAccount).filter(Boolean) },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      { headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } }
     )
   } catch (error) {
     return NextResponse.json(
       { accounts: [], error: error?.message || 'No se pudieron obtener las cuentas bancarias' },
-      { status: 500, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      { status: 500, headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } }
     )
   }
 }

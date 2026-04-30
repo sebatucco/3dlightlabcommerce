@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 300
 
 function getSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -68,11 +69,11 @@ function mapProduct(product) {
   }
 }
 
-function responseNoStore(payload, status = 200) {
+function responseCached(payload, status = 200) {
   return NextResponse.json(payload, {
     status,
     headers: {
-      'Cache-Control': 'no-store, max-age=0',
+      'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
     },
   })
 }
@@ -134,7 +135,7 @@ export async function GET(_request, context) {
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 })
     }
 
-    return responseNoStore(mapProduct(response.data))
+    return responseCached(mapProduct(response.data))
   } catch (error) {
     return NextResponse.json(
       { error: error?.message || 'No se pudo obtener el producto' },

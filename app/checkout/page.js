@@ -16,6 +16,7 @@ import {
   User,
 } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useCart } from '@/lib/store'
 import { formatPrice } from '@/lib/mercadopago'
 import Header from '@/components/Header'
@@ -30,7 +31,9 @@ export default function CheckoutPage() {
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [isLeavingCheckout, setIsLeavingCheckout] = useState(false)
-  const [error, setError] = useState('')
+  const [customerError, setCustomerError] = useState('')
+  const [shippingError, setShippingError] = useState('')
+  const [paymentError, setPaymentError] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('mercadopago')
   const [bankAccounts, setBankAccounts] = useState([])
   const [bankAccountsLoaded, setBankAccountsLoaded] = useState(false)
@@ -74,13 +77,64 @@ export default function CheckoutPage() {
     loadBankAccounts()
   }, [])
 
+  useEffect(() => {
+    if (step !== 1) setCustomerError('')
+    if (step !== 2) setShippingError('')
+    if (step !== 3) setPaymentError('')
+  }, [step])
+
   const handleCustomerSubmit = (e) => {
     e.preventDefault()
+    setCustomerError('')
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const phoneRegex = /^[\d\s\+\-\(\)]{8,20}$/
+
+    if (!customerData.name.trim()) {
+      setCustomerError('El nombre es obligatorio')
+      return
+    }
+    if (customerData.email && !emailRegex.test(customerData.email)) {
+      setCustomerError('Email inválido')
+      return
+    }
+    if (!phoneRegex.test(customerData.phone.replace(/\s/g, ''))) {
+      setCustomerError('Teléfono inválido (mínimo 8 dígitos)')
+      return
+    }
+    if (customerData.dni && !/^\d{7,8}$/.test(customerData.dni.replace(/\D/g, ''))) {
+      setCustomerError('DNI inválido (7-8 dígitos)')
+      return
+    }
+
     setStep(2)
   }
 
   const handleShippingSubmit = (e) => {
     e.preventDefault()
+    setShippingError('')
+
+    if (!shippingData.street.trim()) {
+      setShippingError('La calle es obligatoria')
+      return
+    }
+    if (!shippingData.number.trim()) {
+      setShippingError('El número de dirección es obligatorio')
+      return
+    }
+    if (!shippingData.city.trim()) {
+      setShippingError('La ciudad es obligatoria')
+      return
+    }
+    if (!shippingData.province.trim()) {
+      setShippingError('La provincia es obligatoria')
+      return
+    }
+    if (!shippingData.zipCode.trim()) {
+      setShippingError('El código postal es obligatorio')
+      return
+    }
+
     setStep(3)
   }
 
@@ -107,7 +161,7 @@ export default function CheckoutPage() {
     if (isLoading) return
 
     setIsLoading(true)
-    setError('')
+    setPaymentError('')
 
     try {
       const orderResponse = await fetch('/api/orders', {
@@ -175,7 +229,7 @@ export default function CheckoutPage() {
       }
     } catch (err) {
       console.error('Checkout error:', err)
-      setError(err.message || 'Ocurrió un error inesperado')
+      setPaymentError(err.message || 'Ocurrió un error inesperado')
     } finally {
       setIsLoading(false)
     }
@@ -266,15 +320,19 @@ export default function CheckoutPage() {
                       <label className="mb-2 block text-sm font-semibold text-[#143047]">{label}</label>
                       <input
                         type={type}
-                        required
+                        required={key !== 'dni' && key !== 'email'}
                         value={customerData[key]}
-                        onChange={(e) => setCustomerData({ ...customerData, [key]: e.target.value })}
-                        className="w-full rounded-2xl border border-[#d8cdb8] bg-[#f8f3ea] px-4 py-3 outline-none transition focus:border-[#5e89a6]"
+                        onChange={(e) => {
+                          setCustomerData({ ...customerData, [key]: e.target.value })
+                          setCustomerError('')
+                        }}
+                        className={`w-full rounded-2xl border bg-[#f8f3ea] px-4 py-3 outline-none transition focus:border-[#5e89a6] ${customerError && key === 'phone' ? 'border-[#ef7d6b]' : 'border-[#d8cdb8]'}`}
                         placeholder={placeholder}
                       />
                     </div>
                   ))}
                 </div>
+                {customerError && <p className="mt-4 rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b44a42]">{customerError}</p>}
                 <button className="mt-8 w-full rounded-full bg-[#143047] px-6 py-4 text-sm font-bold uppercase tracking-[0.16em] text-white transition hover:bg-[#214a69]">
                   Continuar al envío
                 </button>
@@ -333,6 +391,7 @@ export default function CheckoutPage() {
                     />
                   </div>
                 </div>
+                {shippingError && <p className="mt-4 rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b44a42]">{shippingError}</p>}
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <button
@@ -451,7 +510,7 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
-                {error && <p className="mt-4 rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b44a42]">{error}</p>}
+                {paymentError && <p className="mt-4 rounded-2xl bg-[#fff1ef] px-4 py-3 text-sm text-[#b44a42]">{paymentError}</p>}
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <button
@@ -504,8 +563,8 @@ export default function CheckoutPage() {
               <div className="mt-5 space-y-4">
                 {cart.map((item) => (
                   <div key={`${item.id}-${item.variant}`} className="flex gap-3 rounded-3xl bg-[#f8f3ea] p-3">
-                    <div className="h-16 w-16 overflow-hidden rounded-2xl bg-white">
-                      <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
+                    <div className="relative h-16 w-16 overflow-hidden rounded-2xl bg-white">
+                      <Image src={item.image} alt={item.name} fill sizes="64px" className="object-cover" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-extrabold text-[#143047]">{item.name}</p>

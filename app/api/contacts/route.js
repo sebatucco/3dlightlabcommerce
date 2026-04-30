@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdmin } from '@/lib/admin-auth'
+import { rateLimits } from '@/lib/rate-limiter'
+import { withApiObservability } from '@/lib/observability'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -93,8 +95,9 @@ function responseNoStore(payload, status = 200) {
 }
 
 export async function GET(request) {
-  const auth = await requireAdmin(request)
-  if (!auth.authorized) return auth.response
+  return withApiObservability(request, '/api/contacts[GET]', async () => {
+    const auth = await requireAdmin(request)
+    if (!auth.authorized) return auth.response
 
   const supabase = getAdminClient()
 
@@ -102,7 +105,7 @@ export async function GET(request) {
     return responseNoStore({ error: 'Supabase no configurado' }, 500)
   }
 
-  try {
+    try {
     const { data, error } = await supabase
       .from('contacts')
       .select('*')
@@ -116,15 +119,22 @@ export async function GET(request) {
     }
 
     return responseNoStore(Array.isArray(data) ? data : [])
-  } catch (error) {
-    return responseNoStore(
-      { error: error?.message || 'No se pudieron obtener los contactos' },
-      500
-    )
-  }
+    } catch (error) {
+      return responseNoStore(
+        { error: error?.message || 'No se pudieron obtener los contactos' },
+        500
+      )
+    }
+  })
 }
 
 export async function POST(request) {
+  return withApiObservability(request, '/api/contacts[POST]', async () => {
+    const rateLimit = await rateLimits.contact(request)
+    if (rateLimit) {
+      return responseNoStore(rateLimit.body, rateLimit.status)
+    }
+
   const body = await request.json().catch(() => null)
   const validation = validateContactPayload(body)
 
@@ -138,7 +148,7 @@ export async function POST(request) {
     return responseNoStore({ error: 'Supabase no configurado' }, 500)
   }
 
-  try {
+    try {
     const payload = validation.value
 
     const { data, error } = await supabase
@@ -161,10 +171,11 @@ export async function POST(request) {
       },
       201
     )
-  } catch (error) {
-    return responseNoStore(
-      { error: error?.message || 'No se pudo guardar el contacto' },
-      500
-    )
-  }
+    } catch (error) {
+      return responseNoStore(
+        { error: error?.message || 'No se pudo guardar el contacto' },
+        500
+      )
+    }
+  })
 }
