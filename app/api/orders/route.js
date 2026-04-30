@@ -255,7 +255,10 @@ function buildValidatedItems(requestItems, dbProducts, dbVariants) {
     }
 
     if (stock < quantity) {
-      return { error: `No hay stock suficiente para ${product.name}` }
+      const stockLabel = variantName
+        ? `${product.name} · ${variantName}`
+        : product.name
+      return { error: `No hay stock suficiente para ${stockLabel}` }
     }
 
     const subtotal = unitPrice * quantity

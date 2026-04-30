@@ -1,10 +1,20 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 300
 
 function getSupabaseClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (serviceRoleKey) {
+    try {
+      return createAdminClient()
+    } catch {
+      // fallback al cliente anónimo
+    }
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -28,6 +38,7 @@ function mapProduct(product) {
   const productImages = mediaRows
     .map((item) => ({
       id: item?.id || null,
+      variant_id: item?.variant_id || null,
       image_url: item?.image_url || '',
       alt_text: item?.alt_text || product.name,
       sort_order: item?.sort_order ?? 0,
@@ -134,7 +145,8 @@ async function fetchProductByField(supabase, field, value) {
       active,
       created_at,
       categories ( id, name, slug ),
-      product_images ( id, image_url, alt_text, sort_order, media_type, use_case, is_primary )
+      product_images ( id, variant_id, image_url, alt_text, sort_order, media_type, use_case, is_primary )
+      
       ,
       product_variants (
         id,

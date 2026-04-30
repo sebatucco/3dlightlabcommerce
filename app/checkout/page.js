@@ -181,23 +181,18 @@ export default function CheckoutPage() {
         throw new Error(orderData.error || 'No se pudo crear el pedido')
       }
 
-      const order = orderData
+      const order = orderData?.order || orderData
+
+      if (!order?.id) {
+        throw new Error('La orden se creó pero no devolvió un ID válido')
+      }
 
       if (paymentMethod === 'mercadopago') {
         const preferenceResponse = await fetch('/api/mercadopago/preference', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            items: cart.map((item) => ({
-              title: item.name,
-              quantity: item.quantity,
-              unit_price: item.price,
-            })),
-            payer: {
-              name: customerData.name,
-              email: customerData.email,
-            },
-            orderId: order.id,
+            order_id: order.id,
           }),
         })
 

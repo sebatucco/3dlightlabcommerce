@@ -176,6 +176,19 @@ export default function ProductClient({ params }) {
     return media.filter((item) => item?.media_type === 'image')
   }, [media])
 
+  const variantImageMap = useMemo(() => {
+    const map = new Map()
+    for (const item of media) {
+      if (item?.media_type !== 'image') continue
+      if (!item?.variant_id) continue
+      const key = String(item.variant_id)
+      if (!map.has(key)) {
+        map.set(key, item)
+      }
+    }
+    return map
+  }, [media])
+
   const model3D = useMemo(() => {
     return (
       media.find((item) => item?.media_type === 'model' && item?.use_case === 'detail') ||
@@ -429,26 +442,46 @@ export default function ProductClient({ params }) {
             {Array.isArray(product.variants) && product.variants.length > 0 && (
               <div className="mt-8">
                 <p className="text-sm font-semibold text-foreground">Variantes disponibles</p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {product.variants.map((variant) => (
                     <button
                       key={variant.id}
-                      onClick={() => setSelectedVariant(variant)}
-                      className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${selectedVariant?.id === variant.id
+                      onClick={() => {
+                        setSelectedVariant(variant)
+                        const variantImage = variantImageMap.get(String(variant.id))
+                        if (variantImage) {
+                          const nextIndex = imagesToShow.findIndex((image) => image.id === variantImage.id)
+                          if (nextIndex >= 0) setCurrentImage(nextIndex)
+                        }
+                      }}
+                      className={`rounded-xl border px-3 py-2 text-left text-sm transition ${selectedVariant?.id === variant.id
                           ? 'border-foreground bg-foreground text-primary-foreground'
                           : 'border-border bg-secondary/40 text-foreground hover:bg-accent'
                         }`}
                       type="button"
                     >
-                      <p className="font-semibold leading-tight">
-                        {variant.display_name || variant.name || variant.sku || 'Variante'}
-                      </p>
-                      <p className="mt-1 text-xs opacity-80">
-                        {variant.sku ? `${variant.sku} · ` : ''}Stock: {variant.stock ?? 0}
-                      </p>
-                      <p className="mt-1 text-sm font-semibold">
-                        {formatPrice(Number(variant.price ?? product.price ?? 0))}
-                      </p>
+                      <div className="flex items-center gap-3">
+                        <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-[hsl(var(--bone))]">
+                          <Image
+                            src={variantImageMap.get(String(variant.id))?.image_url || selectedImage}
+                            alt={variant.display_name || variant.name || variant.sku || 'Variante'}
+                            fill
+                            sizes="56px"
+                            className="object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold leading-tight">
+                            {variant.display_name || variant.name || variant.sku || 'Variante'}
+                          </p>
+                          <p className="mt-0.5 text-xs opacity-80">
+                            {formatPrice(Number(variant.price ?? product.price ?? 0))}
+                          </p>
+                          <p className="mt-0.5 text-xs opacity-80">
+                            Stock: {variant.stock ?? 0}
+                          </p>
+                        </div>
+                      </div>
                     </button>
                   ))}
                 </div>

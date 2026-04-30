@@ -36,7 +36,7 @@ async function getOrderOrNull(supabase, id) {
 async function restoreReservedStockForOrder(supabase, orderId) {
   const { data: orderItems, error: itemsError } = await supabase
     .from('order_items')
-    .select('product_id, quantity')
+    .select('product_id, variant_id, quantity')
     .eq('order_id', orderId)
 
   if (itemsError) {
@@ -51,12 +51,15 @@ async function restoreReservedStockForOrder(supabase, orderId) {
 
   for (const item of orderItems || []) {
     const quantity = Number(item?.quantity ?? 0)
-    if (!item?.product_id || quantity <= 0) continue
+    const sourceTable = item?.variant_id ? 'product_variants' : 'products'
+    const sourceId = item?.variant_id || item?.product_id
+
+    if (!sourceId || quantity <= 0) continue
 
     const { data: product, error: productError } = await supabase
-      .from('products')
+      .from(sourceTable)
       .select('id, stock')
-      .eq('id', item.product_id)
+      .eq('id', sourceId)
       .single()
 
     if (productError || !product) {
@@ -72,7 +75,7 @@ async function restoreReservedStockForOrder(supabase, orderId) {
     const currentStock = Number(product.stock ?? 0)
 
     const { error: stockError } = await supabase
-      .from('products')
+      .from(sourceTable)
       .update({ stock: currentStock + quantity })
       .eq('id', product.id)
 
