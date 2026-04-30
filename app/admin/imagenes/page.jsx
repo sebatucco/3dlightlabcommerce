@@ -440,7 +440,28 @@ export default function AdminImagenesPage() {
                                 </option>
                             ))}
                         </select>
+                        <select
+                            value={form.upload_scope}
+                            onChange={(e) => {
+                                const scope = e.target.value
 
+                                setVariantSearch('')
+
+                                setForm((prev) => ({
+                                    ...prev,
+                                    upload_scope: scope,
+                                    variant_id: '',
+                                    media_type: scope === 'variant' ? 'image' : prev.media_type,
+                                    use_case: scope === 'variant' ? 'detail' : 'catalog',
+                                    image_url: '',
+                                    bucket: '',
+                                }))
+                            }}
+                            className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none"
+                        >
+                            <option value="base">Imagen del producto base</option>
+                            <option value="variant">Imagen de variante</option>
+                        </select>
                         {form.upload_scope === 'variant' ? (
                             <div className="space-y-2">
                                 <input
