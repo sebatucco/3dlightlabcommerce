@@ -208,8 +208,15 @@ export default function ProductClient({ params }) {
 
   const imagesToShow = detailImages.length > 0 ? detailImages : fallbackImages
   const selectedImage = imagesToShow[currentImage]?.image_url || '/placeholder.jpg'
-  const stock = Number(product?.stock ?? 0)
+  const selectedVariantStock = Number(selectedVariant?.stock ?? NaN)
+  const stock = Number.isFinite(selectedVariantStock)
+    ? Math.max(0, selectedVariantStock)
+    : Number(product?.stock ?? 0)
   const outOfStock = stock <= 0
+  const currentPrice = Number(selectedVariant?.price ?? product?.price ?? 0)
+  const currentOriginalPrice = Number(
+    selectedVariant?.compare_at_price ?? product?.originalPrice ?? product?.compare_at_price ?? 0
+  )
 
   useEffect(() => {
     setCurrentImage(0)
@@ -237,7 +244,8 @@ export default function ProductClient({ params }) {
     if (!product) return
 
     const safeQuantity = normalizeQuantity(quantity, stock)
-    const message = `Hola! Me interesa ${product.name}${selectedVariant ? ` (${selectedVariant})` : ''} - ${formatPrice(product.price)}. Cantidad: ${safeQuantity}`
+    const variantLabel = selectedVariant?.display_name || selectedVariant?.name || selectedVariant?.sku || ''
+    const message = `Hola! Me interesa ${product.name}${variantLabel ? ` (${variantLabel})` : ''} - ${formatPrice(currentPrice)}. Cantidad: ${safeQuantity}`
 
     window.open(
       `https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent(message)}`,
@@ -405,11 +413,11 @@ export default function ProductClient({ params }) {
 
             <div className="mt-4 flex items-end gap-3">
               <p className="text-3xl font-semibold text-foreground">
-                {formatPrice(product.price)}
+                {formatPrice(currentPrice)}
               </p>
-              {product.originalPrice && product.originalPrice > product.price && (
+              {currentOriginalPrice > currentPrice && (
                 <p className="pb-1 text-lg text-muted-foreground line-through">
-                  {formatPrice(product.originalPrice)}
+                  {formatPrice(currentOriginalPrice)}
                 </p>
               )}
             </div>
@@ -420,19 +428,27 @@ export default function ProductClient({ params }) {
 
             {Array.isArray(product.variants) && product.variants.length > 0 && (
               <div className="mt-8">
-                <p className="text-sm font-semibold text-foreground">Variante</p>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <p className="text-sm font-semibold text-foreground">Variantes disponibles</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   {product.variants.map((variant) => (
                     <button
-                      key={variant}
+                      key={variant.id}
                       onClick={() => setSelectedVariant(variant)}
-                      className={`rounded-full px-4 py-2 text-sm ${selectedVariant === variant
-                          ? 'bg-foreground text-primary-foreground'
-                          : 'border border-border bg-secondary/40 text-foreground'
+                      className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${selectedVariant?.id === variant.id
+                          ? 'border-foreground bg-foreground text-primary-foreground'
+                          : 'border-border bg-secondary/40 text-foreground hover:bg-accent'
                         }`}
                       type="button"
                     >
-                      {variant}
+                      <p className="font-semibold leading-tight">
+                        {variant.display_name || variant.name || variant.sku || 'Variante'}
+                      </p>
+                      <p className="mt-1 text-xs opacity-80">
+                        {variant.sku ? `${variant.sku} · ` : ''}Stock: {variant.stock ?? 0}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold">
+                        {formatPrice(Number(variant.price ?? product.price ?? 0))}
+                      </p>
                     </button>
                   ))}
                 </div>

@@ -51,7 +51,7 @@ export default function CartDrawer() {
                 <div className="flex-1 space-y-4 overflow-y-auto p-6">
                   {cart.map((item, index) => (
                     <motion.div
-                      key={`${item.id}-${item.variant}`}
+                      key={`${item.product_id || item.id}-${item.variant_id || 'base'}`}
                       initial={{ opacity: 0, y: 18 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.04 }}
@@ -74,14 +74,14 @@ export default function CartDrawer() {
                           <p className="mt-1 font-semibold text-[#2c261f]">{formatPrice(item.price)}</p>
 
                           <div className="mt-3 flex items-center gap-2">
-                            <button onClick={() => updateQuantity(item.id, item.variant, item.quantity - 1)} className="border border-[#dfd5c7] p-1.5 text-[#2c261f] transition hover:bg-[#f6f2ea]">
+                            <button onClick={() => updateQuantity(item.product_id || item.id, item.variant_id || null, item.quantity - 1)} className="border border-[#dfd5c7] p-1.5 text-[#2c261f] transition hover:bg-[#f6f2ea]">
                               <Minus className="h-4 w-4" />
                             </button>
                             <span className="w-8 text-center font-medium text-[#2c261f]">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(item.id, item.variant, item.quantity + 1)} className="border border-[#dfd5c7] p-1.5 text-[#2c261f] transition hover:bg-[#f6f2ea]">
+                            <button onClick={() => updateQuantity(item.product_id || item.id, item.variant_id || null, item.quantity + 1)} className="border border-[#dfd5c7] p-1.5 text-[#2c261f] transition hover:bg-[#f6f2ea]">
                               <Plus className="h-4 w-4" />
                             </button>
-                            <button onClick={() => removeFromCart(item.id, item.variant)} className="ml-auto p-1.5 text-[#a5665f] transition hover:bg-[#fbf0ee]">
+                            <button onClick={() => removeFromCart(item.product_id || item.id, item.variant_id || null)} className="ml-auto p-1.5 text-[#a5665f] transition hover:bg-[#fbf0ee]">
                               <Trash2 className="h-4 w-4" />
                             </button>
                           </div>

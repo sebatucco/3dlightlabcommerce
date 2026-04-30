@@ -52,6 +52,20 @@ function normalizeText(value) {
         .trim()
 }
 
+function formatSelectedOptions(value) {
+    if (!value || typeof value !== 'object') return []
+
+    const options = Array.isArray(value.options) ? value.options : []
+    return options
+        .map((option) => {
+            const optionName = String(option?.option_name || '').trim()
+            const optionValue = String(option?.option_value || '').trim()
+            if (!optionName || !optionValue) return ''
+            return `${optionName}: ${optionValue}`
+        })
+        .filter(Boolean)
+}
+
 export default function AdminPedidosPage() {
     const [orders, setOrders] = useState([])
     const [loading, setLoading] = useState(true)
@@ -561,9 +575,29 @@ export default function AdminPedidosPage() {
                                                             <p className="font-semibold text-[#143047]">
                                                                 {item.products?.name || item.product_name || 'Producto'}
                                                             </p>
+                                                            {item.variant_name ? (
+                                                                <p className="mt-1 text-xs font-semibold text-[#2d5d7b]">
+                                                                    Variante: {item.variant_name}
+                                                                </p>
+                                                            ) : null}
                                                             <p className="mt-1 text-xs text-[#6d7e8b]">
                                                                 SKU: {item.products?.sku || '—'}
                                                             </p>
+                                                            {item.product_variants?.sku ? (
+                                                                <p className="mt-1 text-xs text-[#6d7e8b]">
+                                                                    SKU variante: {item.product_variants.sku}
+                                                                </p>
+                                                            ) : null}
+                                                            {item.variant_id ? (
+                                                                <p className="mt-1 text-xs text-[#6d7e8b]">
+                                                                    Variant ID: {item.variant_id}
+                                                                </p>
+                                                            ) : null}
+                                                            {formatSelectedOptions(item.selected_options).length > 0 ? (
+                                                                <p className="mt-1 text-xs text-[#6d7e8b]">
+                                                                    Opciones: {formatSelectedOptions(item.selected_options).join(' · ')}
+                                                                </p>
+                                                            ) : null}
                                                         </div>
 
                                                         <div className="text-right">

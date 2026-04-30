@@ -132,6 +132,7 @@ function validateRawItems(items) {
 
   for (const item of items) {
     const product_id = normalizeString(item?.product_id || item?.id)
+    const variant_id = normalizeString(item?.variant_id)
     const quantity = toPositiveInteger(item?.quantity)
 
     if (!product_id) {
@@ -142,7 +143,7 @@ function validateRawItems(items) {
       return { error: `Cantidad inválida para el producto ${product_id}` }
     }
 
-    normalized.push({ product_id, quantity })
+    normalized.push({ product_id, variant_id: variant_id || null, quantity })
   }
 
   return { value: normalized }
@@ -166,8 +167,42 @@ async function fetchProductsForOrder(supabase, productIds) {
   return { value: Array.isArray(data) ? data : [] }
 }
 
-function buildValidatedItems(requestItems, dbProducts) {
+async function fetchVariantsForOrder(supabase, variantIds) {
+  if (!Array.isArray(variantIds) || variantIds.length === 0) {
+    return { value: [] }
+  }
+
+  const { data, error } = await supabase
+    .from('product_variants')
+    .select(`
+      id,
+      product_id,
+      name,
+      sku,
+      price,
+      compare_at_price,
+      stock,
+      active,
+      product_variant_option_values(
+        id,
+        option_id,
+        option_value_id,
+        product_options(id,name,slug),
+        product_option_values(id,value,slug)
+      )
+    `)
+    .in('id', variantIds)
+
+  if (error) {
+    return { error: error.message || 'No se pudieron obtener las variantes' }
+  }
+
+  return { value: Array.isArray(data) ? data : [] }
+}
+
+function buildValidatedItems(requestItems, dbProducts, dbVariants) {
   const dbMap = new Map(dbProducts.map((product) => [String(product.id), product]))
+  const variantMap = new Map((dbVariants || []).map((variant) => [String(variant.id), variant]))
   const orderItems = []
   let total = 0
 
@@ -179,8 +214,41 @@ function buildValidatedItems(requestItems, dbProducts) {
     }
 
     const quantity = Number(item.quantity)
-    const stock = Number(product.stock ?? 0)
-    const unitPrice = toSafeNumber(product.price)
+
+    let stock = Number(product.stock ?? 0)
+    let unitPrice = toSafeNumber(product.price)
+    let variantId = null
+    let variantName = null
+    let selectedOptions = {}
+
+    if (item.variant_id) {
+      const variant = variantMap.get(String(item.variant_id))
+
+      if (!variant || variant.active === false) {
+        return { error: 'La variante seleccionada no está disponible' }
+      }
+
+      if (String(variant.product_id) !== String(product.id)) {
+        return { error: `La variante no pertenece al producto ${product.name}` }
+      }
+
+      variantId = variant.id
+      variantName = variant.name || variant.sku || null
+      stock = Number(variant.stock ?? 0)
+      unitPrice = toSafeNumber(variant.price)
+      selectedOptions = {
+        options: Array.isArray(variant.product_variant_option_values)
+          ? variant.product_variant_option_values.map((row) => ({
+            option_id: row.option_id,
+            option_name: row.product_options?.name || null,
+            option_slug: row.product_options?.slug || null,
+            option_value_id: row.option_value_id,
+            option_value: row.product_option_values?.value || null,
+            option_value_slug: row.product_option_values?.slug || null,
+          }))
+          : [],
+      }
+    }
 
     if (quantity <= 0) {
       return { error: `Cantidad inválida para ${product.name}` }
@@ -195,11 +263,13 @@ function buildValidatedItems(requestItems, dbProducts) {
 
     orderItems.push({
       product_id: product.id,
+      variant_id: variantId,
+      variant_name: variantName,
+      selected_options: selectedOptions,
       quantity,
-      price: unitPrice,
+      unit_price: unitPrice,
+      subtotal,
       product_name: product.name,
-      product_slug: product.slug || String(product.id),
-      product_sku: product.sku || null,
     })
   }
 
@@ -301,6 +371,18 @@ export async function POST(request) {
     }
 
     const dbProducts = productsResult.value
+    const variantIds = [...new Set(requestItems.map((item) => item.variant_id).filter(Boolean))]
+    const variantsResult = await fetchVariantsForOrder(supabase, variantIds)
+
+    if (variantsResult.error) {
+      return NextResponse.json({ error: variantsResult.error }, { status: 500 })
+    }
+
+    const dbVariants = variantsResult.value
+
+    if (dbVariants.length !== variantIds.length) {
+      return NextResponse.json({ error: 'Una o más variantes no existen' }, { status: 400 })
+    }
 
     if (dbProducts.length !== productIds.length) {
       return NextResponse.json(
@@ -309,7 +391,7 @@ export async function POST(request) {
       )
     }
 
-    const validatedItemsResult = buildValidatedItems(requestItems, dbProducts)
+    const validatedItemsResult = buildValidatedItems(requestItems, dbProducts, dbVariants)
 
     if (validatedItemsResult.error) {
       return NextResponse.json({ error: validatedItemsResult.error }, { status: 400 })
@@ -352,11 +434,13 @@ export async function POST(request) {
     const itemsPayload = orderItems.map((item) => ({
       order_id: order.id,
       product_id: item.product_id,
+      variant_id: item.variant_id,
+      variant_name: item.variant_name,
+      selected_options: item.selected_options,
       quantity: item.quantity,
-      price: item.price,
+      unit_price: item.unit_price,
+      subtotal: item.subtotal,
       product_name: item.product_name,
-      product_slug: item.product_slug,
-      product_sku: item.product_sku,
     }))
 
     const insertItemsResult = await insertOrderItems(supabase, itemsPayload)

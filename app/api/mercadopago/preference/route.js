@@ -36,10 +36,11 @@ async function getOrderWithItems(supabase, orderId) {
       order_items (
         id,
         product_id,
+        variant_id,
         quantity,
-        price,
+        unit_price,
         product_name,
-        product_slug
+        variant_name
       )
     `)
     .eq('id', orderId)
@@ -70,12 +71,14 @@ function buildPreferenceItems(order) {
   }
 
   const preferenceItems = items.map((item) => {
-    const title = item.product_name || `Producto ${item.product_id}`
+    const title = item.variant_name
+      ? `${item.product_name} · ${item.variant_name}`
+      : item.product_name || `Producto ${item.product_id}`
     const quantity = Number(item.quantity ?? 0)
-    const unit_price = Number(item.price ?? 0)
+    const unit_price = Number(item.unit_price ?? 0)
 
     return {
-      id: String(item.product_id || item.id || title),
+      id: String(item.variant_id || item.product_id || item.id || title),
       title,
       quantity,
       unit_price,

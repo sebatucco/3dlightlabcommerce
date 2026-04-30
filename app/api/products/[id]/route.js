@@ -65,6 +65,44 @@ function mapProduct(product) {
     image: firstImage,
     images: detailImages.map((item) => item.image_url),
     product_images: productImages,
+    variants: Array.isArray(product.product_variants)
+      ? product.product_variants
+        .filter((variant) => variant?.active !== false)
+        .map((variant) => {
+          const optionValues = Array.isArray(variant?.product_variant_option_values)
+            ? variant.product_variant_option_values
+              .map((row) => ({
+                option_id: row?.option_id || null,
+                option_name: row?.product_options?.name || null,
+                option_slug: row?.product_options?.slug || null,
+                option_value_id: row?.option_value_id || null,
+                option_value: row?.product_option_values?.value || null,
+                option_value_slug: row?.product_option_values?.slug || null,
+              }))
+              .filter((row) => row.option_id && row.option_value_id)
+            : []
+
+          const optionLabel = optionValues
+            .map((row) => row.option_value)
+            .filter(Boolean)
+            .join(' · ')
+
+          return {
+            id: variant.id,
+            product_id: variant.product_id || product.id,
+            sku: variant.sku || null,
+            name: variant.name || null,
+            price: Number(variant.price ?? product.price ?? 0),
+            compare_at_price:
+              variant.compare_at_price == null ? null : Number(variant.compare_at_price),
+            stock: Number(variant.stock ?? 0),
+            active: Boolean(variant.active ?? true),
+            selected_options: optionValues,
+            display_name:
+              optionLabel || variant.name || variant.sku || `Variante ${String(variant.id).slice(0, 8)}`,
+          }
+        })
+      : [],
     createdAt: product.created_at || null,
   }
 }
@@ -97,6 +135,24 @@ async function fetchProductByField(supabase, field, value) {
       created_at,
       categories ( id, name, slug ),
       product_images ( id, image_url, alt_text, sort_order, media_type, use_case, is_primary )
+      ,
+      product_variants (
+        id,
+        product_id,
+        sku,
+        name,
+        price,
+        compare_at_price,
+        stock,
+        active,
+        product_variant_option_values (
+          id,
+          option_id,
+          option_value_id,
+          product_options ( id, name, slug ),
+          product_option_values ( id, value, slug )
+        )
+      )
     `)
     .eq(field, value)
     .eq('active', true)

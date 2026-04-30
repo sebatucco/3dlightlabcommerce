@@ -111,10 +111,18 @@ export async function GET(request, context) {
           id,
           order_id,
           product_id,
+          variant_id,
+          variant_name,
+          selected_options,
           product_name,
           unit_price,
           quantity,
           subtotal,
+          product_variants(
+            id,
+            sku,
+            name
+          ),
           products(
             id,
             name,
@@ -238,10 +246,18 @@ export async function PATCH(request, context) {
           id,
           order_id,
           product_id,
+          variant_id,
+          variant_name,
+          selected_options,
           product_name,
           unit_price,
           quantity,
           subtotal,
+          product_variants(
+            id,
+            sku,
+            name
+          ),
           products(
             id,
             name,

@@ -151,7 +151,7 @@ async function getOrderByExternalReference(supabase, externalReference) {
 async function getOrderItems(supabase, orderId) {
   const { data, error } = await supabase
     .from('order_items')
-    .select('product_id, quantity, product_name')
+    .select('product_id, variant_id, quantity, product_name, variant_name')
     .eq('order_id', orderId)
 
   if (error) {
@@ -171,10 +171,12 @@ async function decreaseStockForApprovedPayment(supabase, order) {
   if (itemsResult.error) return itemsResult
 
   for (const item of itemsResult.value) {
+    const sourceTable = item.variant_id ? 'product_variants' : 'products'
+    const sourceId = item.variant_id || item.product_id
     const { data: product, error: productError } = await supabase
-      .from('products')
-      .select('id, stock, name')
-      .eq('id', item.product_id)
+      .from(sourceTable)
+      .select('id, stock, name, sku')
+      .eq('id', sourceId)
       .single()
 
     if (productError || !product) {
@@ -182,6 +184,7 @@ async function decreaseStockForApprovedPayment(supabase, order) {
         error: NextResponse.json(
           {
             error: `No se encontró el producto asociado al item ${item.product_name || item.product_id}`,
+            source: sourceTable,
           },
           { status: 500 }
         ),
@@ -205,7 +208,7 @@ async function decreaseStockForApprovedPayment(supabase, order) {
     const nextStock = Math.max(0, currentStock - quantity)
 
     const { error: stockUpdateError } = await supabase
-      .from('products')
+      .from(sourceTable)
       .update({ stock: nextStock })
       .eq('id', product.id)
 
@@ -214,6 +217,7 @@ async function decreaseStockForApprovedPayment(supabase, order) {
         error: NextResponse.json(
           {
             error: `No se pudo actualizar stock para ${product.name}`,
+            source: sourceTable,
             details: stockUpdateError.message,
           },
           { status: 500 }
@@ -230,10 +234,13 @@ async function restoreStockForRejectedPayment(supabase, order) {
   if (itemsResult.error) return itemsResult
 
   for (const item of itemsResult.value) {
+    const sourceTable = item.variant_id ? 'product_variants' : 'products'
+    const sourceId = item.variant_id || item.product_id
+
     const { data: product, error: productError } = await supabase
-      .from('products')
-      .select('id, stock, name')
-      .eq('id', item.product_id)
+      .from(sourceTable)
+      .select('id, stock, name, sku')
+      .eq('id', sourceId)
       .single()
 
     if (productError || !product) continue
@@ -244,7 +251,7 @@ async function restoreStockForRejectedPayment(supabase, order) {
     if (!Number.isFinite(quantity) || quantity <= 0) continue
 
     const { error: stockUpdateError } = await supabase
-      .from('products')
+      .from(sourceTable)
       .update({ stock: currentStock + quantity })
       .eq('id', product.id)
 

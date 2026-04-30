@@ -562,7 +562,7 @@ export default function CheckoutPage() {
 
               <div className="mt-5 space-y-4">
                 {cart.map((item) => (
-                  <div key={`${item.id}-${item.variant}`} className="flex gap-3 rounded-3xl bg-[#f8f3ea] p-3">
+                  <div key={`${item.product_id || item.id}-${item.variant_id || 'base'}`} className="flex gap-3 rounded-3xl bg-[#f8f3ea] p-3">
                     <div className="relative h-16 w-16 overflow-hidden rounded-2xl bg-white">
                       <Image src={item.image} alt={item.name} fill sizes="64px" className="object-cover" />
                     </div>
