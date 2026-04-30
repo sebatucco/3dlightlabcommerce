@@ -227,9 +227,6 @@ export default function ProductClient({ params }) {
     : Number(product?.stock ?? 0)
   const outOfStock = stock <= 0
   const currentPrice = Number(selectedVariant?.price ?? product?.price ?? 0)
-  const currentOriginalPrice = Number(
-    selectedVariant?.compare_at_price ?? product?.originalPrice ?? product?.compare_at_price ?? 0
-  )
 
   useEffect(() => {
     setCurrentImage(0)
@@ -424,25 +421,10 @@ export default function ProductClient({ params }) {
               {product.name}
             </h1>
 
-            <div className="mt-4 flex items-end gap-3">
-              <p className="text-3xl font-semibold text-foreground">
-                {formatPrice(currentPrice)}
-              </p>
-              {currentOriginalPrice > currentPrice && (
-                <p className="pb-1 text-lg text-muted-foreground line-through">
-                  {formatPrice(currentOriginalPrice)}
-                </p>
-              )}
-            </div>
-
-            <p className="mt-5 text-base leading-8 text-muted-foreground">
-              {product.description}
-            </p>
-
             {Array.isArray(product.variants) && product.variants.length > 0 && (
-              <div className="mt-8">
+              <div className="mt-6 border-t border-border/70 pt-6">
                 <p className="text-sm font-semibold text-foreground">Variantes disponibles</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {product.variants.map((variant) => (
                     <button
                       key={variant.id}
@@ -454,7 +436,7 @@ export default function ProductClient({ params }) {
                           if (nextIndex >= 0) setCurrentImage(nextIndex)
                         }
                       }}
-                      className={`rounded-xl border px-3 py-2 text-left text-sm transition ${selectedVariant?.id === variant.id
+                      className={`rounded-xl border px-3 py-2.5 text-left text-sm transition ${selectedVariant?.id === variant.id
                           ? 'border-foreground bg-foreground text-primary-foreground'
                           : 'border-border bg-secondary/40 text-foreground hover:bg-accent'
                         }`}
@@ -475,9 +457,6 @@ export default function ProductClient({ params }) {
                             {variant.display_name || variant.name || variant.sku || 'Variante'}
                           </p>
                           <p className="mt-0.5 text-xs opacity-80">
-                            {formatPrice(Number(variant.price ?? product.price ?? 0))}
-                          </p>
-                          <p className="mt-0.5 text-xs opacity-80">
                             Stock: {variant.stock ?? 0}
                           </p>
                         </div>
@@ -488,7 +467,7 @@ export default function ProductClient({ params }) {
               </div>
             )}
 
-            <div className="mt-8 flex items-center gap-2">
+            <div className="mt-6 flex items-center gap-2">
               <button
                 onClick={() => setQuantity((value) => normalizeQuantity(value - 1, stock))}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-accent"
@@ -520,7 +499,7 @@ export default function ProductClient({ params }) {
               </p>
             ) : null}
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={handleAddToCart}
                 disabled={outOfStock || addingToCart}
