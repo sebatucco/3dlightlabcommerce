@@ -53,7 +53,6 @@ export default function AdminImagenesPage() {
     const [useCaseFilter, setUseCaseFilter] = useState('all')
     const [form, setForm] = useState(initialForm)
     const [variants, setVariants] = useState([])
-    const [variantSearch, setVariantSearch] = useState('')
     const variantOptions = useMemo(() => {
         return variants.map((variant) => ({
             id: variant.id,
@@ -62,16 +61,20 @@ export default function AdminImagenesPage() {
         }))
     }, [variants])
 
-    const filteredVariantOptions = useMemo(() => {
-        const term = normalizeText(variantSearch)
+    const pendingVariantOptions = useMemo(() => {
+        const variantsWithImage = new Set(
+            images
+                .filter((image) => image.variant_id && image.media_type === 'image')
+                .map((image) => String(image.variant_id))
+        )
 
         return variantOptions
             .filter((variant) => variant.product_id === form.product_id)
             .filter((variant) => {
-                if (!term) return true
-                return normalizeText(variant.label).includes(term)
+                if (form.variant_id && variant.id === form.variant_id) return true
+                return !variantsWithImage.has(String(variant.id))
             })
-    }, [variantOptions, form.product_id, variantSearch])
+    }, [variantOptions, form.product_id, form.variant_id, images])
 
 
     async function loadData() {
@@ -422,7 +425,6 @@ export default function AdminImagenesPage() {
                         <select
                             value={form.product_id}
                             onChange={(e) => {
-                                setVariantSearch('')
                                 setForm((prev) => ({
                                     ...prev,
                                     product_id: e.target.value,
@@ -445,8 +447,6 @@ export default function AdminImagenesPage() {
                             onChange={(e) => {
                                 const scope = e.target.value
 
-                                setVariantSearch('')
-
                                 setForm((prev) => ({
                                     ...prev,
                                     upload_scope: scope,
@@ -462,17 +462,9 @@ export default function AdminImagenesPage() {
                             <option value="base">Imagen del producto base</option>
                             <option value="variant">Imagen de variante</option>
                         </select>
+
                         {form.upload_scope === 'variant' ? (
                             <div className="space-y-2">
-                                <input
-                                    type="text"
-                                    value={variantSearch}
-                                    onChange={(e) => setVariantSearch(e.target.value)}
-                                    placeholder="Buscar variante por SKU o nombre"
-                                    disabled={!form.product_id}
-                                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
-                                />
-
                                 <select
                                     value={form.variant_id}
                                     onChange={(e) => {
@@ -490,7 +482,7 @@ export default function AdminImagenesPage() {
                                     className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
                                 >
                                     <option value="">Seleccioná una variante</option>
-                                    {filteredVariantOptions.map((variant) => (
+                                    {pendingVariantOptions.map((variant) => (
                                         <option key={variant.id} value={variant.id}>
                                             {variant.label}
                                         </option>
@@ -498,8 +490,13 @@ export default function AdminImagenesPage() {
                                 </select>
 
                                 <p className="text-xs text-[#6d7e8b]">
-                                    {filteredVariantOptions.length} variante(s) encontradas para este producto.
+                                    {pendingVariantOptions.length} variante(s) disponible(s) sin imagen cargada.
                                 </p>
+                                {!pendingVariantOptions.length ? (
+                                    <p className="text-xs text-[#6d7e8b]">
+                                        Este producto ya tiene imagen en todas sus variantes. Podés editar o eliminar en el panel derecho.
+                                    </p>
+                                ) : null}
                             </div>
                         ) : null}
 
