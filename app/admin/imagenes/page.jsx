@@ -53,6 +53,7 @@ export default function AdminImagenesPage() {
     const [useCaseFilter, setUseCaseFilter] = useState('all')
     const [form, setForm] = useState(initialForm)
     const [variants, setVariants] = useState([])
+    const [variantSearch, setVariantSearch] = useState('')
     const variantOptions = useMemo(() => {
         return variants.map((variant) => ({
             id: variant.id,
@@ -60,6 +61,18 @@ export default function AdminImagenesPage() {
             label: `${variant.name || variant.sku || 'Variante'}${variant.sku ? ` · ${variant.sku}` : ''}`,
         }))
     }, [variants])
+
+    const filteredVariantOptions = useMemo(() => {
+        const term = normalizeText(variantSearch)
+
+        return variantOptions
+            .filter((variant) => variant.product_id === form.product_id)
+            .filter((variant) => {
+                if (!term) return true
+                return normalizeText(variant.label).includes(term)
+            })
+    }, [variantOptions, form.product_id, variantSearch])
+
 
     async function loadData() {
         try {
@@ -408,13 +421,16 @@ export default function AdminImagenesPage() {
 
                         <select
                             value={form.product_id}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                                setVariantSearch('')
                                 setForm((prev) => ({
                                     ...prev,
                                     product_id: e.target.value,
                                     variant_id: '',
+                                    image_url: '',
+                                    bucket: '',
                                 }))
-                            }
+                            }}
                             className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none"
                         >
                             <option value="">Seleccioná un producto</option>
@@ -425,32 +441,46 @@ export default function AdminImagenesPage() {
                             ))}
                         </select>
 
-                        <select
-                            value={form.variant_id}
-                            onChange={(e) => {
-                                const variantId = e.target.value
-                                setForm((prev) => ({
-                                    ...prev,
-                                    variant_id: variantId,
-                                    upload_scope: variantId ? 'variant' : 'base',
-                                    media_type: variantId ? 'image' : prev.media_type,
-                                    use_case: variantId ? 'detail' : 'catalog',
-                                    image_url: '',
-                                    bucket: '',
-                                }))
-                            }}
-                            disabled={!form.product_id}
-                            className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
-                        >
-                            <option value="">Imagen del producto base</option>
-                            {variantOptions
-                                .filter((variant) => variant.product_id === form.product_id)
-                                .map((variant) => (
-                                    <option key={variant.id} value={variant.id}>
-                                        {variant.label}
-                                    </option>
-                                ))}
-                        </select>
+                        {form.upload_scope === 'variant' ? (
+                            <div className="space-y-2">
+                                <input
+                                    type="text"
+                                    value={variantSearch}
+                                    onChange={(e) => setVariantSearch(e.target.value)}
+                                    placeholder="Buscar variante por SKU o nombre"
+                                    disabled={!form.product_id}
+                                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
+                                />
+
+                                <select
+                                    value={form.variant_id}
+                                    onChange={(e) => {
+                                        const variantId = e.target.value
+                                        setForm((prev) => ({
+                                            ...prev,
+                                            variant_id: variantId,
+                                            media_type: 'image',
+                                            use_case: 'detail',
+                                            image_url: '',
+                                            bucket: '',
+                                        }))
+                                    }}
+                                    disabled={!form.product_id}
+                                    className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
+                                >
+                                    <option value="">Seleccioná una variante</option>
+                                    {filteredVariantOptions.map((variant) => (
+                                        <option key={variant.id} value={variant.id}>
+                                            {variant.label}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <p className="text-xs text-[#6d7e8b]">
+                                    {filteredVariantOptions.length} variante(s) encontradas para este producto.
+                                </p>
+                            </div>
+                        ) : null}
 
                         <div className="grid gap-3 sm:grid-cols-2">
                             <select
