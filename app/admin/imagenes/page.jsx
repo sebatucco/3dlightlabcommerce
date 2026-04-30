@@ -52,28 +52,29 @@ export default function AdminImagenesPage() {
     const [typeFilter, setTypeFilter] = useState('all')
     const [useCaseFilter, setUseCaseFilter] = useState('all')
     const [form, setForm] = useState(initialForm)
+    const [variants, setVariants] = useState([])
     const variantOptions = useMemo(() => {
-        return products.flatMap((product) =>
-            (product.product_variants || product.variants || []).map((variant) => ({
-                id: variant.id,
-                product_id: product.id,
-                label: `${variant.name || variant.sku || 'Variante'}${variant.sku ? ` · ${variant.sku}` : ''}`,
-            }))
-        )
-    }, [products])
+        return variants.map((variant) => ({
+            id: variant.id,
+            product_id: variant.product_id,
+            label: `${variant.name || variant.sku || 'Variante'}${variant.sku ? ` · ${variant.sku}` : ''}`,
+        }))
+    }, [variants])
 
     async function loadData() {
         try {
             setLoading(true)
             setError('')
 
-            const [imagesRes, productsRes] = await Promise.all([
+            const [imagesRes, productsRes, variantsRes] = await Promise.all([
                 fetch('/api/admin/product-images', { cache: 'no-store' }),
                 fetch('/api/admin/products', { cache: 'no-store' }),
+                fetch('/api/admin/product-variants', { cache: 'no-store' }),
             ])
 
             const imagesData = await imagesRes.json().catch(() => [])
             const productsData = await productsRes.json().catch(() => [])
+            const variantsData = await variantsRes.json().catch(() => [])
 
             if (!imagesRes.ok) {
                 throw new Error(imagesData?.error || 'No se pudo cargar la media')
@@ -82,9 +83,14 @@ export default function AdminImagenesPage() {
             if (!productsRes.ok) {
                 throw new Error(productsData?.error || 'No se pudieron cargar los productos')
             }
+            if (!variantsRes.ok) {
+                throw new Error(variantsData?.error || 'No se pudieron cargar las variantes')
+            }
 
             setImages(Array.isArray(imagesData) ? imagesData : [])
             setProducts(Array.isArray(productsData) ? productsData : [])
+            setVariants(Array.isArray(variantsData) ? variantsData : [])
+
         } catch (err) {
             setError(err.message || 'Error cargando imágenes')
         } finally {
