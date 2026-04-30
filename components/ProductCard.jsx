@@ -1,6 +1,6 @@
 'use client'
 
-import { ShoppingCart, MessageCircle } from 'lucide-react'
+import { ArrowRight, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
 import { formatPrice } from '@/lib/mercadopago'
 import { siteConfig } from '@/lib/site'
@@ -80,17 +80,15 @@ export default function ProductCard({ product }) {
             </h3>
 
             <p className="mt-2 line-clamp-2 min-h-[48px] text-sm leading-6 text-[#6b7280]">
-              {product.short_description || product.description}
+              {product.description}
             </p>
 
             <div className="mt-auto flex gap-3 pt-5">
               <span
-                className="flex-1 rounded-full bg-[#143047] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#214a69]"
+                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#143047] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#214a69]"
               >
-                <span className="inline-flex items-center justify-center gap-2">
-                  <ShoppingCart className="h-4 w-4" />
-                  Ver detalle
-                </span>
+                <ArrowRight className="h-4 w-4" />
+                Ver detalle
               </span>
 
               <button
