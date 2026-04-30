@@ -57,7 +57,7 @@ function mapProduct(product) {
     name: product.name,
     shortDescription: product.short_description || null,
     short_description: product.short_description || null,
-    description: product.description || product.short_description || '',
+    description: product.description || '',
     price: Number(product.price || 0),
     originalPrice: product.compare_at_price == null ? null : Number(product.compare_at_price),
     compare_at_price: product.compare_at_price == null ? null : Number(product.compare_at_price),

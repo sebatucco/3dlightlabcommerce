@@ -85,7 +85,7 @@ function normalizeProduct(product, categoryMap = new Map()) {
     name: product.name,
     slug: product.slug || String(product.id),
     short_description: product.short_description || null,
-    description: product.description || product.short_description || '',
+    description: product.description || '',
     price: Number(product.price || 0),
     compare_at_price: product.compare_at_price == null ? null : Number(product.compare_at_price),
     originalPrice: product.compare_at_price == null ? null : Number(product.compare_at_price),
