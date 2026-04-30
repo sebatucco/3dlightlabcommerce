@@ -69,7 +69,7 @@ export default function ProductCard({ product }) {
             </h3>
 
             <p className="mt-2 line-clamp-4 min-h-[96px] text-sm leading-6 text-[#6b7280]">
-              {product.short_description || product.description}
+              {product.description}
             </p>
 
             <div className="mt-auto flex gap-3 pt-5">
