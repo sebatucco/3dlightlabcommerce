@@ -206,6 +206,18 @@ export default function AdminImagenesPage() {
                 media_type: form.upload_scope === 'variant' ? 'image' : form.media_type,
                 use_case: form.upload_scope === 'variant' ? 'detail' : form.use_case || null,
                 is_primary: Boolean(form.is_primary),
+                bucket:
+                    form.upload_scope === 'variant'
+                        ? 'product-variant-images'
+                        : form.bucket || (
+                            form.media_type === 'model'
+                                ? 'product-models'
+                                : form.use_case === 'gallery'
+                                    ? 'product-gallery-images'
+                                    : form.use_case === 'hero'
+                                        ? 'product-hero-images'
+                                        : 'product-images'
+                        ),
             }
 
             if (!payload.product_id) {
@@ -442,29 +454,50 @@ export default function AdminImagenesPage() {
 
                         <div className="grid gap-3 sm:grid-cols-2">
                             <select
-                                value={form.media_type}
+                                value={form.upload_scope === 'variant' ? 'image' : form.media_type}
+                                disabled={form.upload_scope === 'variant'}
                                 onChange={(e) =>
                                     setForm((prev) => ({
                                         ...prev,
                                         media_type: e.target.value,
                                         image_url: '',
+                                        bucket: '',
                                     }))
                                 }
-                                className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none"
+                                className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
                             >
-                                <option value="image">Imagen</option>
-                                <option value="model">Modelo 3D</option>
+                                {form.upload_scope === 'variant' ? (
+                                    <option value="image">Imagen</option>
+                                ) : (
+                                    <>
+                                        <option value="image">Imagen</option>
+                                        <option value="model">Modelo 3D</option>
+                                    </>
+                                )}
                             </select>
 
                             <select
-                                value={form.use_case}
-                                onChange={(e) => setForm((prev) => ({ ...prev, use_case: e.target.value }))}
-                                className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none"
+                                value={form.upload_scope === 'variant' ? 'detail' : form.use_case}
+                                disabled={form.upload_scope === 'variant'}
+                                onChange={(e) =>
+                                    setForm((prev) => ({
+                                        ...prev,
+                                        use_case: e.target.value,
+                                        image_url: '',
+                                        bucket: '',
+                                    }))
+                                }
+                                className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
                             >
-                                <option value="catalog">Catalog</option>
-                                <option value="detail">Detail</option>
-                                <option value="gallery">Gallery</option>
-                                <option value="hero">Hero</option>
+                                {form.upload_scope === 'variant' ? (
+                                    <option value="detail">Detail</option>
+                                ) : (
+                                    <>
+                                        <option value="catalog">Catalog</option>
+                                        <option value="gallery">Gallery</option>
+                                        <option value="hero">Hero</option>
+                                    </>
+                                )}
                             </select>
                         </div>
 
