@@ -24,20 +24,16 @@ function normalizeUseCase(value) {
 }
 
 function resolveBucket({ uploadScope, mediaType, useCase, variantId }) {
+    if (uploadScope === 'global') {
+        return 'site-media-images'
+    }
+
     if (uploadScope === 'variant' || variantId) {
         return 'product-variant-images'
     }
 
     if (mediaType === 'model') {
         return 'product-models'
-    }
-
-    if (useCase === 'gallery') {
-        return 'product-gallery-images'
-    }
-
-    if (useCase === 'hero') {
-        return 'product-hero-images'
     }
 
     return 'product-images'
@@ -61,7 +57,11 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Archivo inválido' }, { status: 400 })
         }
 
-        if (!productId) {
+        if (!['base', 'variant', 'global'].includes(uploadScope)) {
+            return NextResponse.json({ error: 'upload_scope inválido' }, { status: 400 })
+        }
+
+        if (uploadScope !== 'global' && !productId) {
             return NextResponse.json({ error: 'Falta product_id' }, { status: 400 })
         }
 
@@ -116,9 +116,11 @@ export async function POST(request) {
         const fileName = safeFileName(file.name)
 
         const folder =
-            uploadScope === 'variant' && variantId
-                ? `${productId}/variants/${variantId}`
-                : `${productId}/${useCase}`
+            uploadScope === 'global'
+                ? `global/${useCase}`
+                : uploadScope === 'variant' && variantId
+                    ? `${productId}/variants/${variantId}`
+                    : `${productId}/${useCase}`
 
         const path = `${folder}/${Date.now()}-${fileName}`
 

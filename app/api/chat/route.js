@@ -31,8 +31,26 @@ function hasLampIntent(message) {
         text.includes('iluminacion') ||
         text.includes('destacado') ||
         text.includes('stock') ||
+        text.includes('stook') ||
+        text.includes('existencia') ||
         text.includes('comprar') ||
         text.includes('producto')
+    )
+}
+
+function hasStockIntent(message) {
+    const text = normalize(message)
+
+    return (
+        text.includes('stock') ||
+        text.includes('stook') ||
+        text.includes('hay stock') ||
+        text.includes('tenes stock') ||
+        text.includes('tienen stock') ||
+        text.includes('disponible') ||
+        text.includes('disponibilidad') ||
+        text.includes('existencia') ||
+        text.includes('queda')
     )
 }
 
@@ -79,12 +97,35 @@ function getCatalogImage(product) {
     return image?.image_url || product?.image_url || ''
 }
 
-async function callAI(message) {
-    const apiKey = process.env.GROQ_API_KEY
+function parseAIJson(content) {
+    const json = String(content || '').match(/\{[\s\S]*\}/)?.[0]
+    if (!json) return null
 
-    if (!apiKey) {
+    try {
+        return JSON.parse(json)
+    } catch {
         return null
     }
+}
+
+function hasMaterialIntent(message) {
+    const text = normalize(message)
+
+    return (
+        text.includes('material') ||
+        text.includes('madera') ||
+        text.includes('plastico') ||
+        text.includes('pla') ||
+        text.includes('petg') ||
+        text.includes('resina') ||
+        text.includes('impres') ||
+        text.includes('3d')
+    )
+}
+
+async function callGroqAI(message) {
+    const apiKey = process.env.GROQ_API_KEY
+    if (!apiKey) return null
 
     try {
         const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -103,7 +144,7 @@ async function callAI(message) {
 Sos un asistente vendedor para un ecommerce de lámparas.
 Devolvé SOLO JSON válido:
 {
-  "intent": "products|stock|featured|buy|payment|general",
+  "intent": "products|stock|featured|buy|payment|materials|general",
   "query": "producto principal limpio",
   "answer": "respuesta breve"
 }
@@ -127,13 +168,79 @@ No inventes productos, precios ni stock.
 
         const content = data?.choices?.[0]?.message?.content || ''
         console.log('IA RAW GROQ:', content)
-
-        const json = content.match(/\{[\s\S]*\}/)?.[0]
-        return json ? JSON.parse(json) : null
+        return parseAIJson(content)
     } catch (error) {
         console.log('GROQ FETCH ERROR:', error?.message)
         return null
     }
+}
+
+function isOpenAIEnabled() {
+    const value = String(process.env.OPENAI_FALLBACK_ENABLED ?? 'true').toLowerCase()
+    return !['0', 'false', 'off', 'no'].includes(value)
+}
+
+async function callOpenAIFallback(message) {
+    if (!isOpenAIEnabled()) return null
+
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) return null
+
+    try {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+                temperature: 0.2,
+                messages: [
+                    {
+                        role: 'system',
+                        content: `
+Sos un asistente vendedor para un ecommerce de lámparas.
+Devolvé SOLO JSON válido:
+{
+  "intent": "products|stock|featured|buy|payment|materials|general",
+  "query": "producto principal limpio",
+  "answer": "respuesta breve"
+}
+No inventes productos, precios ni stock.
+            `.trim(),
+                    },
+                    {
+                        role: 'user',
+                        content: message,
+                    },
+                ],
+            }),
+        })
+
+        const data = await res.json().catch(() => null)
+        if (!res.ok) {
+            console.log('OPENAI ERROR:', res.status, data)
+            return null
+        }
+
+        const content = data?.choices?.[0]?.message?.content || ''
+        console.log('IA RAW OPENAI:', content)
+        return parseAIJson(content)
+    } catch (error) {
+        console.log('OPENAI FETCH ERROR:', error?.message)
+        return null
+    }
+}
+
+async function callAI(message) {
+    const groq = await callGroqAI(message)
+    if (groq) return { data: groq, source: 'groq' }
+
+    const openai = await callOpenAIFallback(message)
+    if (openai) return { data: openai, source: 'openai' }
+
+    return { data: null, source: 'local' }
 }
 
 async function getProducts(supabase) {
@@ -227,10 +334,28 @@ function searchProducts(products, query, message, intent) {
     }
 
     if (intent === 'stock') {
-        results = products
-            .filter((product) => Number(product.stock || 0) > 0)
-            .map((product) => ({ ...product, _score: product.featured ? 10 : 1 }))
-            .sort((a, b) => b._score - a._score)
+        const tokens = textQuery
+            .split(' ')
+            .map((word) => word.trim())
+            .filter((word) => word.length >= 3)
+
+        const genericWords = new Set([
+            'hay', 'con', 'sin', 'stock', 'stook', 'tenes', 'tienen', 'queda', 'quedan', 'disponible',
+            'disponibilidad', 'lampara', 'lamparas', 'velador', 'veladores', 'luz', 'luces', 'producto',
+        ])
+
+        const specificTokens = tokens.filter((word) => !genericWords.has(word))
+
+        if (specificTokens.length > 0) {
+            results = results.filter((product) => Number(product.stock || 0) > 0)
+        }
+
+        if (!results.length || specificTokens.length === 0) {
+            results = products
+                .filter((product) => Number(product.stock || 0) > 0)
+                .map((product) => ({ ...product, _score: product.featured ? 10 : 1 }))
+                .sort((a, b) => b._score - a._score)
+        }
     }
 
     if (!results.length && hasLampIntent(message)) {
@@ -255,7 +380,7 @@ function buildReply(products, intent) {
     if (intent === 'buy') {
         return {
             reply:
-                'Perfecto. Te muestro opciones disponibles. Abrí la tarjeta del producto, revisá el detalle y seguí al checkout para elegir forma de pago.',
+                'Perfecto, te guío para comprar: 1) abrí un producto, 2) elegí variante y cantidad, 3) tocá "Agregar al carrito", 4) andá a checkout y elegí el pago. Te dejo opciones para empezar ahora.',
             products,
         }
     }
@@ -263,7 +388,15 @@ function buildReply(products, intent) {
     if (intent === 'stock') {
         return {
             reply:
-                'Sí, estas opciones figuran con stock disponible. Podés abrir una tarjeta para ver detalles y avanzar con la compra.',
+                'Sí, estas opciones figuran con stock disponible. Abrí una tarjeta, elegí variante y te acompaño hasta completar la compra.',
+            products,
+        }
+    }
+
+    if (intent === 'materials') {
+        return {
+            reply:
+                'Trabajamos lámparas impresas en 3D con terminaciones decorativas según modelo/variante. Si querés, te muestro opciones con stock para recomendarte la más adecuada según uso (dormitorio, living o escritorio).',
             products,
         }
     }
@@ -283,7 +416,7 @@ function buildReply(products, intent) {
 
     return {
         reply:
-            `Sí, encontré estas opciones:\n\n${resumen}\n\nAbrí una tarjeta para ver detalles y avanzar con la compra.`,
+            `Sí, encontré estas opciones:\n\n${resumen}\n\nSi querés comprar, abrí una tarjeta, elegí variante/cantidad y avanzá al checkout. Si preferís, te recomiendo una según tu ambiente.`,
         products,
     }
 }
@@ -335,14 +468,17 @@ export async function POST(request) {
 
         const supabase = createAdminSupabaseClient()
 
-        const ai = await callAI(message)
+        const aiResult = await callAI(message)
+        const ai = aiResult?.data
+        const aiSource = aiResult?.source || 'local'
 
         let intent = ai?.intent || 'general'
         let query = ai?.query || message
 
         if (hasPaymentIntent(message)) intent = 'payment'
+        else if (hasMaterialIntent(message)) intent = 'materials'
         else if (hasBuyIntent(message)) intent = 'buy'
-        else if (normalize(message).includes('stock')) intent = 'stock'
+        else if (hasStockIntent(message)) intent = 'stock'
         else if (normalize(message).includes('destacado')) intent = 'featured'
         else if (hasLampIntent(message)) intent = 'products'
 
@@ -353,15 +489,17 @@ export async function POST(request) {
                 reply,
                 products: [],
                 debug: {
-                    source: ai ? 'groq' : 'local',
+                    source: aiSource,
                     intent,
                     query,
                     hasGroq: Boolean(process.env.GROQ_API_KEY),
+                    hasOpenAI: Boolean(process.env.OPENAI_API_KEY),
+                    openAIFallbackEnabled: isOpenAIEnabled(),
                 },
             })
         }
 
-        if (intent === 'products' || intent === 'buy' || intent === 'stock' || intent === 'featured') {
+        if (intent === 'products' || intent === 'buy' || intent === 'stock' || intent === 'featured' || intent === 'materials') {
             const allProducts = await getProducts(supabase)
             const products = searchProducts(allProducts, query, message, intent)
             const response = buildReply(products, intent)
@@ -370,25 +508,29 @@ export async function POST(request) {
                 reply: response.reply,
                 products: response.products,
                 debug: {
-                    source: ai ? 'groq' : 'local',
+                    source: aiSource,
                     intent,
                     query,
                     productsCount: products.length,
                     totalProducts: allProducts.length,
                     hasGroq: Boolean(process.env.GROQ_API_KEY),
+                    hasOpenAI: Boolean(process.env.OPENAI_API_KEY),
+                    openAIFallbackEnabled: isOpenAIEnabled(),
                 },
             })
         }
 
         return NextResponse.json({
             reply:
-                'Puedo ayudarte con lámparas, veladores, iluminación, stock, productos destacados y formas de pago. ¿Qué estás buscando?',
+                'Puedo ayudarte a concretar tu compra: elegir productos, revisar stock, consultar materiales y avanzar al checkout paso a paso. ¿Qué lámpara estás buscando?',
             products: [],
             debug: {
-                source: ai ? 'groq' : 'local',
+                source: aiSource,
                 intent,
                 query,
                 hasGroq: Boolean(process.env.GROQ_API_KEY),
+                hasOpenAI: Boolean(process.env.OPENAI_API_KEY),
+                openAIFallbackEnabled: isOpenAIEnabled(),
             },
         })
     } catch (error) {
@@ -404,3 +546,4 @@ export async function POST(request) {
     }
   })
 }
+

@@ -14,6 +14,9 @@ const initialForm = {
     use_case: 'catalog',
     bucket: '',
     is_primary: false,
+    title: '',
+    subtitle: '',
+    active: true,
 }
 
 function normalizeText(value) {
@@ -82,15 +85,17 @@ export default function AdminImagenesPage() {
             setLoading(true)
             setError('')
 
-            const [imagesRes, productsRes, variantsRes] = await Promise.all([
+            const [imagesRes, productsRes, variantsRes, siteMediaRes] = await Promise.all([
                 fetch('/api/admin/product-images', { cache: 'no-store' }),
                 fetch('/api/admin/products', { cache: 'no-store' }),
                 fetch('/api/admin/product-variants', { cache: 'no-store' }),
+                fetch('/api/admin/site-media', { cache: 'no-store' }),
             ])
 
             const imagesData = await imagesRes.json().catch(() => [])
             const productsData = await productsRes.json().catch(() => [])
             const variantsData = await variantsRes.json().catch(() => [])
+            const siteMediaData = await siteMediaRes.json().catch(() => [])
 
             if (!imagesRes.ok) {
                 throw new Error(imagesData?.error || 'No se pudo cargar la media')
@@ -102,8 +107,25 @@ export default function AdminImagenesPage() {
             if (!variantsRes.ok) {
                 throw new Error(variantsData?.error || 'No se pudieron cargar las variantes')
             }
+            const canUseSiteMedia = siteMediaRes.ok
 
-            setImages(Array.isArray(imagesData) ? imagesData : [])
+            const normalizedProductMedia = (Array.isArray(imagesData) ? imagesData : []).map((image) => ({
+                ...image,
+                _scope: 'product',
+            }))
+
+            const normalizedSiteMedia = (canUseSiteMedia && Array.isArray(siteMediaData) ? siteMediaData : []).map((media) => ({
+                ...media,
+                _scope: 'global',
+                products: { name: 'Contenido global (homepage)', slug: 'site-media' },
+                product_variants: null,
+                product_id: null,
+                variant_id: null,
+                media_type: 'image',
+                is_primary: false,
+            }))
+
+            setImages([...normalizedProductMedia, ...normalizedSiteMedia])
             setProducts(Array.isArray(productsData) ? productsData : [])
             setVariants(Array.isArray(variantsData) ? variantsData : [])
 
@@ -124,24 +146,30 @@ export default function AdminImagenesPage() {
     }
 
     function selectImage(image) {
+        const isGlobal = image._scope === 'global'
+
         setEditingId(image.id)
         setForm({
-            upload_scope: image.variant_id ? 'variant' : 'base',
+            upload_scope: isGlobal ? 'global' : image.variant_id ? 'variant' : 'base',
             product_id: image.product_id || '',
             variant_id: image.variant_id || '',
             image_url: image.image_url || '',
             alt_text: image.alt_text || '',
             sort_order: Number(image.sort_order || 0),
             media_type: image.media_type || 'image',
-            use_case: image.variant_id ? 'detail' : image.use_case || 'catalog',
+            use_case: isGlobal ? image.use_case || 'gallery' : image.variant_id ? 'detail' : image.use_case || 'catalog',
             is_primary: Boolean(image.is_primary),
+            bucket: image.bucket || '',
+            title: image.title || '',
+            subtitle: image.subtitle || '',
+            active: image.active !== false,
         })
     }
 
     async function uploadFile(file) {
         if (!file) return
 
-        if (!form.product_id) {
+        if (form.upload_scope !== 'global' && !form.product_id) {
             setError('Seleccioná un producto antes de subir el archivo')
             return
         }
@@ -161,14 +189,16 @@ export default function AdminImagenesPage() {
             setError('')
             setMessage('')
 
-            const uploadScope = form.upload_scope === 'variant' ? 'variant' : 'base'
+            const uploadScope = form.upload_scope === 'variant' ? 'variant' : form.upload_scope === 'global' ? 'global' : 'base'
             const useCase = uploadScope === 'variant' ? 'detail' : form.use_case
             const mediaType = uploadScope === 'variant' ? 'image' : form.media_type
 
             const uploadForm = new FormData()
             uploadForm.append('file', file)
             uploadForm.append('media_type', mediaType)
-            uploadForm.append('product_id', form.product_id)
+            if (uploadScope !== 'global') {
+                uploadForm.append('product_id', form.product_id)
+            }
             uploadForm.append('use_case', useCase)
             uploadForm.append('upload_scope', uploadScope)
 
@@ -214,30 +244,34 @@ export default function AdminImagenesPage() {
             setMessage('')
 
             const payload = {
-                product_id: form.product_id,
-                variant_id: form.upload_scope === 'variant' ? form.variant_id : null,
                 image_url: String(form.image_url || '').trim(),
                 alt_text: String(form.alt_text || '').trim(),
                 sort_order: Number(form.sort_order || 0),
-                media_type: form.upload_scope === 'variant' ? 'image' : form.media_type,
                 use_case: form.upload_scope === 'variant' ? 'detail' : form.use_case || null,
-                is_primary: Boolean(form.is_primary),
-                bucket:
-                    form.upload_scope === 'variant'
-                        ? 'product-variant-images'
-                        : form.bucket || (
-                            form.media_type === 'model'
-                                ? 'product-models'
-                                : form.use_case === 'gallery'
-                                    ? 'product-gallery-images'
-                                    : form.use_case === 'hero'
-                                        ? 'product-hero-images'
-                                        : 'product-images'
-                        ),
             }
 
-            if (!payload.product_id) {
+            if (form.upload_scope === 'global') {
+                payload.title = String(form.title || '').trim() || null
+                payload.subtitle = String(form.subtitle || '').trim() || null
+                payload.active = Boolean(form.active)
+                payload.bucket = 'site-media-images'
+            } else {
+                payload.product_id = form.product_id
+                payload.variant_id = form.upload_scope === 'variant' ? form.variant_id : null
+                payload.media_type = form.upload_scope === 'variant' ? 'image' : form.media_type
+                payload.is_primary = Boolean(form.is_primary)
+                payload.bucket =
+                    form.upload_scope === 'variant'
+                        ? 'product-variant-images'
+                        : form.bucket || (form.media_type === 'model' ? 'product-models' : 'product-images')
+            }
+
+            if (form.upload_scope !== 'global' && !payload.product_id) {
                 throw new Error('Seleccioná un producto')
+            }
+
+            if (form.upload_scope === 'global' && !['gallery', 'hero'].includes(payload.use_case)) {
+                throw new Error('Para contenido global solo se permite uso Gallery o Hero')
             }
 
             if (!payload.image_url) {
@@ -245,8 +279,12 @@ export default function AdminImagenesPage() {
             }
 
             const endpoint = editingId
-                ? `/api/admin/product-images/${editingId}`
-                : '/api/admin/product-images'
+                ? form.upload_scope === 'global'
+                    ? `/api/admin/site-media/${editingId}`
+                    : `/api/admin/product-images/${editingId}`
+                : form.upload_scope === 'global'
+                    ? '/api/admin/site-media'
+                    : '/api/admin/product-images'
 
             const method = editingId ? 'PUT' : 'POST'
 
@@ -280,7 +318,7 @@ export default function AdminImagenesPage() {
             setError('')
             setMessage('')
 
-            const response = await fetch(`/api/admin/product-images/${image.id}`, {
+            const response = await fetch(image._scope === 'global' ? `/api/admin/site-media/${image.id}` : `/api/admin/product-images/${image.id}`, {
                 method: 'DELETE',
             })
 
@@ -312,6 +350,8 @@ export default function AdminImagenesPage() {
                     image.products?.name,
                     image.products?.slug,
                     image.alt_text,
+                    image.title,
+                    image.subtitle,
                     image.image_url,
                     image.media_type,
                     image.use_case,
@@ -413,7 +453,7 @@ export default function AdminImagenesPage() {
                                     {editingId ? 'Editar media' : 'Agregar media'}
                                 </h2>
                                 <p className="mt-1 text-sm text-[#6d7e8b]">
-                                    Subí imágenes al bucket product-images y modelos 3D al bucket product-models.
+                                    Producto base: `product-images` / variantes: `product-variant-images` / global home: `site-media-images`.
                                 </p>
                             </div>
 
@@ -433,7 +473,8 @@ export default function AdminImagenesPage() {
                                     bucket: '',
                                 }))
                             }}
-                            className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none"
+                            disabled={form.upload_scope === 'global'}
+                            className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
                         >
                             <option value="">Seleccioná un producto</option>
                             {products.map((product) => (
@@ -461,6 +502,7 @@ export default function AdminImagenesPage() {
                         >
                             <option value="base">Imagen del producto base</option>
                             <option value="variant">Imagen de variante</option>
+                            <option value="global">Imagen global (homepage)</option>
                         </select>
 
                         {form.upload_scope === 'variant' ? (
@@ -503,7 +545,7 @@ export default function AdminImagenesPage() {
                         <div className="grid gap-3 sm:grid-cols-2">
                             <select
                                 value={form.upload_scope === 'variant' ? 'image' : form.media_type}
-                                disabled={form.upload_scope === 'variant'}
+                                disabled={form.upload_scope === 'variant' || form.upload_scope === 'global'}
                                 onChange={(e) =>
                                     setForm((prev) => ({
                                         ...prev,
@@ -514,7 +556,7 @@ export default function AdminImagenesPage() {
                                 }
                                 className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none disabled:bg-[#f3efe6] disabled:text-[#8d7b68]"
                             >
-                                {form.upload_scope === 'variant' ? (
+                                {form.upload_scope === 'variant' || form.upload_scope === 'global' ? (
                                     <option value="image">Imagen</option>
                                 ) : (
                                     <>
@@ -539,6 +581,11 @@ export default function AdminImagenesPage() {
                             >
                                 {form.upload_scope === 'variant' ? (
                                     <option value="detail">Detail</option>
+                                ) : form.upload_scope === 'global' ? (
+                                    <>
+                                        <option value="gallery">Gallery</option>
+                                        <option value="hero">Hero</option>
+                                    </>
                                 ) : (
                                     <>
                                         <option value="catalog">Catalog</option>
@@ -593,6 +640,7 @@ export default function AdminImagenesPage() {
                             className="w-full rounded-2xl border border-[#d8cdb8] px-4 py-3 text-sm outline-none"
                         />
 
+                        {form.upload_scope !== 'global' ? (
                         <label className="flex items-center gap-2 text-sm text-[#143047]">
                             <input
                                 type="checkbox"
@@ -603,6 +651,7 @@ export default function AdminImagenesPage() {
                             />
                             Principal para ese producto/tipo/uso
                         </label>
+                        ) : null}
 
                         <div className="flex flex-wrap gap-3">
                             <button
@@ -657,7 +706,9 @@ export default function AdminImagenesPage() {
                                                     {image.products?.name || 'Producto'}
                                                 </p>
                                                 <p className="mt-1 text-xs font-semibold text-[#5e89a6]">
-                                                    {image.variant_id
+                                                    {image._scope === 'global'
+                                                        ? 'Contenido global homepage'
+                                                        : image.variant_id
                                                         ? `Variante: ${image.product_variants?.name || image.product_variants?.sku || image.variant_id}`
                                                         : 'Imagen base del producto'}
                                                 </p>
@@ -670,6 +721,11 @@ export default function AdminImagenesPage() {
                                                 <p className="mt-1 text-xs text-[#6d7e8b]">
                                                     Alt: {image.alt_text || '—'}
                                                 </p>
+                                                {image._scope === 'global' ? (
+                                                    <p className="mt-1 text-xs text-[#6d7e8b]">
+                                                        Título: {image.title || '—'} · Subtítulo: {image.subtitle || '—'} · Activa: {image.active === false ? 'No' : 'Sí'}
+                                                    </p>
+                                                ) : null}
                                                 {image.is_primary ? (
                                                     <span className="mt-2 inline-flex rounded-full bg-[#ecf8f4] px-3 py-1 text-xs font-semibold text-[#0f6d5f]">
                                                         Principal

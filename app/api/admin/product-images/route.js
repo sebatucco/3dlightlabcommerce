@@ -23,8 +23,6 @@ function resolveBucket({ bucket, media_type, use_case, variant_id }) {
 
   if (variant_id) return 'product-variant-images'
   if (media_type === 'model') return 'product-models'
-  if (use_case === 'gallery') return 'product-gallery-images'
-  if (use_case === 'hero') return 'product-hero-images'
 
   return 'product-images'
 }
@@ -114,6 +112,13 @@ export async function POST(request) {
 
     if (payload.variant_id && payload.use_case !== 'detail') {
       payload.use_case = 'detail'
+    }
+
+    if (!payload.variant_id && ['gallery', 'hero'].includes(payload.use_case || '')) {
+      return NextResponse.json(
+        { error: 'Las imágenes Gallery/Hero ahora son globales. Usá la opción "Imagen global (homepage)".' },
+        { status: 400 }
+      )
     }
 
     if (payload.variant_id) {

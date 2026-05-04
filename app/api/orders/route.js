@@ -81,21 +81,6 @@ function validateCheckoutPayload(body) {
     ? customer_name.split(' ').slice(1).join(' ').trim() || null
     : null
 
-  const address =
-    shipping_method === 'envio'
-      ? [
-        shipping_street,
-        shipping_number,
-        shipping_floor ? `Piso ${shipping_floor}` : null,
-        shipping_apartment ? `Depto ${shipping_apartment}` : null,
-        shipping_city,
-        shipping_province,
-        shipping_postal_code,
-      ]
-        .filter(Boolean)
-        .join(', ')
-      : null
-
   return {
     value: {
       customer_name,
@@ -112,7 +97,6 @@ function validateCheckoutPayload(body) {
       shipping_city: shipping_city || null,
       shipping_province: shipping_province || null,
       shipping_postal_code: shipping_postal_code || null,
-      address,
       customer_notes: customer_notes || null,
       notes: customer_notes || null,
     },
@@ -417,7 +401,6 @@ export async function POST(request) {
       shipping_city: customer.shipping_city,
       shipping_province: customer.shipping_province,
       shipping_postal_code: customer.shipping_postal_code,
-      address: customer.address,
       customer_notes: customer.customer_notes,
       notes: customer.notes,
       total,

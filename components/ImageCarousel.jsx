@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 
-const items = [
+const fallbackItems = [
   { name: 'Diseño lumínico', title: 'Colección Aurora', img: '/gallery/gallery-1.jpg' },
   { name: 'Texturas cálidas', title: 'Colección Esmé', img: '/gallery/gallery-2.jpg' },
   { name: 'Volúmenes suaves', title: 'Colección Margot', img: '/gallery/gallery-3.jpg' },
@@ -14,12 +14,49 @@ const items = [
 export default function ImageCarousel() {
   const [activeItem, setActiveItem] = useState(2)
   const [isDesktop, setIsDesktop] = useState(false)
+  const [items, setItems] = useState(fallbackItems)
 
   useEffect(() => {
     const checkScreen = () => setIsDesktop(window.innerWidth >= 768)
     checkScreen()
     window.addEventListener('resize', checkScreen)
     return () => window.removeEventListener('resize', checkScreen)
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadSiteMedia() {
+      try {
+        const response = await fetch('/api/site-media', { cache: 'no-store' })
+        const data = await response.json().catch(() => ({}))
+
+        if (!response.ok || !mounted) return
+
+        const mapped = Array.isArray(data?.items)
+          ? data.items
+            .filter((item) => item?.image_url)
+            .map((item, index) => ({
+              name: item?.title || item?.alt_text || `Imagen ${index + 1}`,
+              title: item?.subtitle || (item?.use_case === 'hero' ? 'Hero principal' : 'Galería destacada'),
+              img: item.image_url,
+            }))
+          : []
+
+        if (mapped.length > 0) {
+          setItems(mapped)
+          setActiveItem(0)
+        }
+      } catch {
+        // fallback local
+      }
+    }
+
+    loadSiteMedia()
+
+    return () => {
+      mounted = false
+    }
   }, [])
 
   return (

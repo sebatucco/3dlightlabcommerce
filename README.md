@@ -29,6 +29,11 @@ Copiá `.env.example` a `.env.local` y completá:
 - `NEXT_PUBLIC_SITE_URL`
 - `NEXT_PUBLIC_WHATSAPP_NUMBER`
 - `ADMIN_SESSION_SECRET`
+- `GROQ_API_KEY` (opcional, IA principal del chat)
+- `GROQ_MODEL` (opcional)
+- `OPENAI_API_KEY` (opcional, fallback del chat)
+- `OPENAI_MODEL` (opcional)
+- `OPENAI_FALLBACK_ENABLED` (opcional, `false` para deshabilitar fallback OpenAI)
 - `METRICS_PERSISTENCE_ENABLED` (opcional)
 
 ## Ejecutar

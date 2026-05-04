@@ -164,6 +164,8 @@ export default function CheckoutPage() {
     setPaymentError('')
 
     try {
+      const apiPaymentMethod = paymentMethod === 'transfer' ? 'transferencia' : paymentMethod
+
       const orderResponse = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -171,7 +173,7 @@ export default function CheckoutPage() {
           items: cart,
           customer: customerData,
           shipping: shippingData,
-          paymentMethod,
+          paymentMethod: apiPaymentMethod,
         }),
       })
 

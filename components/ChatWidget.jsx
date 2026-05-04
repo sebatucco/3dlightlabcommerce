@@ -91,7 +91,7 @@ export default function ChatWidget() {
             id: 'welcome',
             role: 'assistant',
             content:
-                'Hola 👋 Soy el asistente de 3DLightLab. Si estás buscando una lámpara o tenés alguna duda, te ayudo.',
+                'Hola 👋 Soy el asistente de 3DLightLab. Te ayudo a elegir lámparas, revisar stock/materiales y completar la compra paso a paso.',
             products: [],
         },
     ])
@@ -243,7 +243,7 @@ export default function ChatWidget() {
                                 type="text"
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
-                                placeholder="Escribí tu consulta..."
+                                placeholder="Ej: hay stook de cozy light / qué material usan"
                                 className="min-w-0 flex-1 rounded-full border border-[#d8cdb8] bg-[#f8f3ea] px-4 py-3 text-sm text-[#143047] outline-none transition focus:border-[#5e89a6]"
                             />
                             <button

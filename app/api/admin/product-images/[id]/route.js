@@ -150,6 +150,13 @@ export async function PUT(request, context) {
     )
   }
 
+  if (!updates.variant_id && ['gallery', 'hero'].includes(updates.use_case || '')) {
+    return NextResponse.json(
+      { error: 'Las imágenes Gallery/Hero ahora son globales. Usá la opción "Imagen global (homepage)".' },
+      { status: 400 }
+    )
+  }
+
   try {
     const supabase = createAdminSupabaseClient()
 
