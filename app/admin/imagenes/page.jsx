@@ -585,7 +585,6 @@ export default function AdminImagenesPage() {
                                     <>
                                         <option value="gallery">Gallery</option>
                                         <option value="hero">Hero</option>
-                                        <option value="carousel">Carrusel</option>
                                     </>
                                 ) : (
                                     <option value="catalog">Catalog</option>

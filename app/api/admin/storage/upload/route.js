@@ -4,7 +4,7 @@ import { createAdminSupabaseClient } from '@/lib/admin-supabase'
 
 export const dynamic = 'force-dynamic'
 
-const ALLOWED_USE_CASES = ['catalog', 'detail', 'gallery', 'hero', 'carousel']
+const ALLOWED_USE_CASES = ['catalog', 'detail', 'gallery', 'hero']
 
 function safeFileName(value) {
     const raw = String(value || 'archivo')

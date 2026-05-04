@@ -72,7 +72,7 @@ No cambiar al principio:
 
 - Producto base: `use_case = catalog`
 - Variante: `use_case = detail`
-- Global home: `use_case = gallery | hero | carousel`
+- Global home: `use_case = gallery | hero`
 - Buckets:
   - `product-images`
   - `product-variant-images`
@@ -96,7 +96,7 @@ No cambiar al principio:
 5. Transferencia muestra cuentas activas y conserva el pedido.
 6. WhatsApp abre mensaje con resumen y mantiene trazabilidad.
 7. Admin ABM de categorias/productos/imagenes/pedidos funciona.
-8. Carga de imagen global (gallery/hero/carousel) funciona end-to-end.
+8. Carga de imagen global (gallery/hero) funciona end-to-end.
 
 ## 9) Errores frecuentes y solucion corta
 

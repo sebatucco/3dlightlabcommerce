@@ -19,7 +19,7 @@ alter table public.site_media
 
 alter table public.site_media
   add constraint site_media_use_case_check
-  check (use_case in ('gallery', 'hero', 'carousel'));
+  check (use_case in ('gallery', 'hero'));
 
 create index if not exists idx_site_media_active_use_case_sort
   on public.site_media(active, use_case, sort_order, created_at desc);

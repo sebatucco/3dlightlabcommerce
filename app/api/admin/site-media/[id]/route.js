@@ -4,7 +4,7 @@ import { createAdminSupabaseClient } from '@/lib/admin-supabase'
 
 export const dynamic = 'force-dynamic'
 
-const ALLOWED_USE_CASES = ['gallery', 'hero', 'carousel']
+const ALLOWED_USE_CASES = ['gallery', 'hero']
 
 function isValidUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim())
@@ -49,7 +49,7 @@ export async function PUT(request, context) {
     }
 
     if (!payload.use_case) {
-      return NextResponse.json({ error: 'Seleccioná un uso válido (gallery, hero o carousel)' }, { status: 400 })
+      return NextResponse.json({ error: 'Seleccioná un uso válido (gallery o hero)' }, { status: 400 })
     }
 
     const supabase = createAdminSupabaseClient()
