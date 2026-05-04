@@ -12,7 +12,7 @@ create table if not exists public.site_media (
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint site_media_use_case_check check (use_case in ('gallery', 'hero'))
+  constraint site_media_use_case_check check (use_case in ('gallery', 'hero', 'carousel'))
 );
 
 create index if not exists idx_site_media_active_use_case_sort

@@ -493,7 +493,7 @@ export default function AdminImagenesPage() {
                                     upload_scope: scope,
                                     variant_id: '',
                                     media_type: scope === 'variant' ? 'image' : prev.media_type,
-                                    use_case: scope === 'variant' ? 'detail' : 'catalog',
+                                    use_case: scope === 'variant' ? 'detail' : scope === 'global' ? 'gallery' : 'catalog',
                                     image_url: '',
                                     bucket: '',
                                 }))
@@ -567,8 +567,8 @@ export default function AdminImagenesPage() {
                             </select>
 
                             <select
-                                value={form.upload_scope === 'variant' ? 'detail' : form.use_case}
-                                disabled={form.upload_scope === 'variant'}
+                                value={form.upload_scope === 'variant' ? 'detail' : form.upload_scope === 'base' ? 'catalog' : form.use_case}
+                                disabled={form.upload_scope === 'variant' || form.upload_scope === 'base'}
                                 onChange={(e) =>
                                     setForm((prev) => ({
                                         ...prev,
@@ -585,13 +585,10 @@ export default function AdminImagenesPage() {
                                     <>
                                         <option value="gallery">Gallery</option>
                                         <option value="hero">Hero</option>
+                                        <option value="carousel">Carrusel</option>
                                     </>
                                 ) : (
-                                    <>
-                                        <option value="catalog">Catalog</option>
-                                        <option value="gallery">Gallery</option>
-                                        <option value="hero">Hero</option>
-                                    </>
+                                    <option value="catalog">Catalog</option>
                                 )}
                             </select>
                         </div>

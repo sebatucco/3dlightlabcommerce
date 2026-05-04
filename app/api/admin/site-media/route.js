@@ -4,7 +4,7 @@ import { createAdminSupabaseClient } from '@/lib/admin-supabase'
 
 export const dynamic = 'force-dynamic'
 
-const ALLOWED_USE_CASES = ['gallery', 'hero']
+const ALLOWED_USE_CASES = ['gallery', 'hero', 'carousel']
 
 function isMissingSiteMediaTable(error) {
   const message = String(error?.message || '').toLowerCase()
@@ -68,7 +68,7 @@ export async function POST(request) {
     }
 
     if (!payload.use_case) {
-      return NextResponse.json({ error: 'Seleccioná un uso válido (gallery o hero)' }, { status: 400 })
+      return NextResponse.json({ error: 'Seleccioná un uso válido (gallery, hero o carousel)' }, { status: 400 })
     }
 
     if (payload.bucket !== 'site-media-images') {

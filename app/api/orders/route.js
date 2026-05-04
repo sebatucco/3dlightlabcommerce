@@ -5,7 +5,7 @@ import { withApiObservability } from '@/lib/observability'
 
 export const runtime = 'nodejs'
 
-const ALLOWED_PAYMENT_METHODS = ['mercadopago', 'transferencia']
+const ALLOWED_PAYMENT_METHODS = ['mercadopago', 'transferencia', 'whatsapp']
 const ALLOWED_SHIPPING_METHODS = ['envio', 'retiro']
 const MAX_ITEMS_PER_ORDER = 50
 

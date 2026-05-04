@@ -28,7 +28,7 @@ export async function GET() {
       .from('site_media')
       .select('id, image_url, alt_text, title, subtitle, use_case, sort_order, active')
       .eq('active', true)
-      .in('use_case', ['gallery', 'hero'])
+      .in('use_case', ['gallery', 'hero', 'carousel'])
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false })
 
