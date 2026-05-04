@@ -138,6 +138,11 @@ function buildOrderExpiration(paymentMethod) {
   return new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString()
 }
 
+function buildExternalReference() {
+  const random = Math.random().toString(36).slice(2, 10)
+  return `ord_${Date.now().toString(36)}_${random}`
+}
+
 async function fetchProductsForOrder(supabase, productIds) {
   const { data, error } = await supabase
     .from('products')
@@ -387,6 +392,7 @@ export async function POST(request) {
     const { orderItems, total } = validatedItemsResult.value
 
     const orderPayload = {
+      external_reference: buildExternalReference(),
       customer_name: customer.customer_name,
       customer_last_name: customer.customer_last_name,
       customer_phone: customer.customer_phone,
