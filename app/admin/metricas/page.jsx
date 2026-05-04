@@ -151,7 +151,7 @@ export default function AdminMetricasPage() {
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#5e89a6]">
-              Observabilidad
+              Administración
             </p>
             <h1 className="mt-2 text-4xl font-extrabold">Métricas de API</h1>
             <p className="mt-2 text-sm text-[#6d7e8b]">
@@ -159,18 +159,18 @@ export default function AdminMetricasPage() {
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button
               type="button"
               onClick={() => (window.location.href = '/admin')}
-              className="rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047]"
+              className="inline-flex items-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047] hover:bg-[#f8f3ea]"
             >
               ← Volver
             </button>
             <button
               type="button"
               onClick={loadMetrics}
-              className="inline-flex items-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047]"
+              className="inline-flex items-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047] hover:bg-[#f8f3ea]"
             >
               <RefreshCw className="h-4 w-4" />
               Actualizar

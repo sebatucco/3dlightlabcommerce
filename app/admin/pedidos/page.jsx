@@ -304,14 +304,24 @@ export default function AdminPedidosPage() {
                         <h1 className="mt-2 text-4xl font-extrabold">Pedidos</h1>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={loadOrders}
-                        className="inline-flex items-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047] hover:bg-[#f8f3ea]"
-                    >
-                        <RefreshCw className="h-4 w-4" />
-                        Actualizar
-                    </button>
+                    <div className="flex flex-wrap gap-3">
+                        <button
+                            type="button"
+                            onClick={() => (window.location.href = '/admin')}
+                            className="inline-flex items-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047] hover:bg-[#f8f3ea]"
+                        >
+                            ← Volver
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={loadOrders}
+                            className="inline-flex items-center gap-2 rounded-full border border-[#d8cdb8] bg-white px-5 py-3 text-sm font-semibold text-[#143047] hover:bg-[#f8f3ea]"
+                        >
+                            <RefreshCw className="h-4 w-4" />
+                            Actualizar
+                        </button>
+                    </div>
                 </div>
 
                 {error ? (

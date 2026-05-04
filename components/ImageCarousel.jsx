@@ -101,21 +101,6 @@ export default function ImageCarousel() {
                     className={`absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent transition-opacity duration-500 ${isActive ? 'opacity-100' : 'opacity-70'}`}
                   />
 
-                  <div
-                    className={`absolute bottom-0 left-0 w-full p-4 text-white transition-all duration-700 ease-out sm:p-5 md:p-6 lg:p-8 ${isActive ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-100 md:translate-y-8 md:opacity-0'}`}
-                  >
-                    <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-[#ece3d8] sm:text-xs md:text-sm">
-                      {item.title}
-                    </p>
-
-                    <p
-                      className="mt-2 text-xl font-bold tracking-tight sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl"
-                      style={{ textShadow: '2px 2px 10px rgba(0,0,0,0.55)' }}
-                    >
-                      {item.name}
-                    </p>
-                  </div>
-
                   {!isDesktop && (
                     <div className="absolute right-4 top-4 rounded-full bg-black/35 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-white/90 backdrop-blur-sm">
                       {isActive ? 'Activo' : 'Tocar'}

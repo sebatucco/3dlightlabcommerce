@@ -595,8 +595,11 @@ export default function AdminPage() {
       <div className="mx-auto grid min-h-screen max-w-[1500px] gap-6 px-4 py-6 lg:grid-cols-[260px_1fr]">
         <aside className="rounded-[28px] border border-[#d8cdb8] bg-white p-6 shadow-[0_14px_35px_rgba(20,48,71,0.06)]">
           <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#5e89a6]">Panel interno</p>
-          <h1 className="mt-3 font-display text-5xl uppercase leading-none">3DLightLab Commerce</h1>
-          <p className="mt-3 text-sm text-[#4e6475]">{session?.email || 'Administrador'}</p>
+          <h1 className="mt-3 font-display text-3xl uppercase leading-tight sm:text-4xl">3DLightLab Commerce</h1>
+          <div className="mt-4 rounded-2xl border border-[#e4d8c5] bg-[#f8f3ea] px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#5e89a6]">Administrador</p>
+            <p className="mt-1 text-sm leading-5 text-[#4e6475] [overflow-wrap:anywhere]">{session?.email || 'Administrador'}</p>
+          </div>
 
           <div className="mt-8 space-y-2">
             {tabs.map((tab) => (

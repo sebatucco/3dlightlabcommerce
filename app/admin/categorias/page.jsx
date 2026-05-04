@@ -224,7 +224,7 @@ export default function AdminCategoriasPage() {
                         <h1 className="mt-2 text-4xl font-extrabold">Categorías</h1>
                     </div>
 
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3">
                         <button
                             type="button"
                             onClick={() => (window.location.href = '/admin')}
