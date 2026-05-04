@@ -1,31 +1,37 @@
-# 3DLightLab Commerce - Guía para crear el sitio desde cero
+# Modelo Ecommerce Reutilizable - Guia Completa
 
-Este paquete sirve como modelo para recrear el ecommerce desde cero o clonar la arquitectura para otro proyecto.
+Esta guia sirve para recrear este proyecto desde cero y adaptarlo a cualquier rubro (moda, hogar, repuestos, tecnologia, etc.) sin romper la base tecnica.
 
-## 1. Qué incluye
+## 1) Que trae el modelo
 
-- `01_supabase_bootstrap.sql`: script limpio para crear tablas, triggers, funciones, RLS y buckets.
-- `.env.example`: plantilla de variables para local y Netlify.
-- `CHECKLIST_DEPLOY_SEGURIDAD.md`: checklist operativo de deploy, seguridad, auth y webhooks.
-- `SERVICIOS_EXTERNOS.md`: dónde obtener API keys de Supabase, Mercado Pago, Groq y OpenAI.
-- `CONFIGURACIONES_DINAMICAS.md`: qué conviene sacar del código y llevar a base de datos.
+- Frontend en Next.js (App Router) con home, catalogo, detalle y checkout.
+- Backend API con validaciones, observabilidad y rate limit.
+- Panel admin con login, categorias, productos, variantes, imagenes, pedidos y cuentas bancarias.
+- Integracion de pagos: Mercado Pago, transferencia y cierre por WhatsApp.
+- Persistencia en Supabase (Postgres + Storage + Auth + RLS).
 
-## 2. Orden recomendado para levantar un proyecto nuevo
+## 2) Paquete para recrear desde cero
+
+El archivo `modelo_3dlightlabcommerce_recrear_desde_cero.zip` incluye:
+
+- `.env.example`
+- `README.md`
+- `CHECKLIST_DEPLOY_SEGURIDAD.md`
+- `SERVICIOS_EXTERNOS.md`
+- `CONFIGURACIONES_DINAMICAS.md`
+- `01_supabase_bootstrap.sql`
+
+## 3) Flujo recomendado de arranque
 
 1. Crear proyecto en Supabase.
-2. Ejecutar `01_supabase_bootstrap.sql` en Supabase SQL Editor.
-3. Crear un usuario admin en Supabase Auth.
-4. Insertar ese usuario en `public.profiles` con rol `admin`.
-5. Crear/verificar buckets Storage: `product-images`, `product-models`, `transfer-receipts`.
-6. Configurar variables de entorno en `.env.local` y Netlify.
-7. Deployar en Netlify.
-8. Configurar webhook de Mercado Pago.
-9. Cargar categorías, productos, imágenes/modelos, cuentas bancarias.
-10. Probar checkout, transferencia, Mercado Pago, contacto, chat y panel admin.
+2. Ejecutar `01_supabase_bootstrap.sql` en SQL Editor.
+3. Crear usuario admin en Supabase Auth.
+4. Dar rol admin en `public.profiles`.
+5. Configurar variables de entorno (`.env.local` y hosting).
+6. Instalar dependencias y levantar local.
+7. Probar checkout completo y panel admin.
 
-## 3. Crear admin inicial
-
-Después de crear un usuario desde Supabase Auth, copiar su UUID y ejecutar:
+## 4) Admin inicial
 
 ```sql
 insert into public.profiles (id, email, role, is_active)
@@ -34,329 +40,72 @@ on conflict (id) do update
 set role = 'admin', is_active = true, email = excluded.email;
 ```
 
-## 4. Rutas principales del sistema
+## 5) Adaptar el modelo a otro negocio
 
-### Público
+Cambios minimos para una nueva marca:
 
-- `/` tienda pública
-- `/producto/[id]` detalle de producto
-- `/checkout` checkout
-- `/checkout/success`
-- `/checkout/failure`
-- `/checkout/pending`
-- `/checkout/transfer`
+- `lib/site.js`: nombre comercial, WhatsApp, email, ubicacion, textos base.
+- Home (`app/page.js`): titulares, propuestas de valor y secciones visuales.
+- Seed/catalogo: categorias, productos, precios, stock, imagenes y variantes.
+- Branding visual: logo, paleta, tipografia, fotos.
 
-### Admin
+No cambiar al principio:
 
-- `/admin` dashboard
-- `/admin/login`
-- `/admin/categorias`
-- `/admin/productos`
-- `/admin/imagenes`
-- `/admin/pedidos`
-- `/admin/cuentas-bancarias`
+- Contratos de API.
+- Estructura de tablas y checks de estados.
+- Flujo de orden -> preferencia MP -> webhook -> actualizacion de estado.
 
-### APIs públicas/server
+## 6) Contratos clave de datos
 
-- `GET /api/products`
-- `GET /api/categories`
-- `POST /api/contacts`
-- `POST /api/orders`
-- `GET/PATCH /api/orders/[id]`
-- `GET /api/bank-accounts`
-- `POST /api/chat`
-- `POST /api/mercadopago/preference`
-- `POST /api/mercadopago/webhook`
+### orders
 
-### APIs admin
+- `payment_method`: `mercadopago | transferencia | whatsapp`
+- `status`: `pending | approved | cancelled | rejected`
+- `shipping_status`: `pending | preparing | shipped | delivered | cancelled`
+- `external_reference` obligatorio y unico.
 
-- `/api/admin/session`
-- `/api/admin/login`
-- `/api/admin/logout`
-- `/api/admin/categories`
-- `/api/admin/products`
-- `/api/admin/product-images`
-- `/api/admin/orders`
-- `/api/admin/contacts`
-- `/api/admin/bank-accounts`
-- `/api/admin/storage/upload`
+### order_items
 
-## 5. Contactos y leads
+- Soporta variantes (`variant_id`, `variant_name`) y opciones (`selected_options`).
 
-El formulario público usa `POST /api/contacts`. Guarda en `public.contacts` si recibe:
+### media
 
-- `name`
-- `email`
-- `message`
-- opcional: `phone`, `reason`, `product`
+- Producto base: `use_case = catalog`
+- Variante: `use_case = detail`
+- Global home: `use_case = gallery | hero | carousel`
+- Buckets:
+  - `product-images`
+  - `product-variant-images`
+  - `product-models`
+  - `site-media-images`
 
-El chatbot también puede guardar leads en la misma tabla usando service role desde `/api/chat`.
+## 7) Seguridad minima obligatoria
 
-## 6. Chatbot
+- RLS activa en tablas publicas.
+- Operaciones sensibles via backend (nunca desde cliente directo con service role).
+- `ADMIN_SESSION_SECRET` >= 32 caracteres.
+- Tokens/API keys solo en variables server.
+- Webhook de Mercado Pago con token/firma/IP allowlist cuando aplique.
 
-El chat funciona con estrategia híbrida:
+## 8) Pruebas funcionales antes de publicar
 
-1. Reglas locales: productos, pagos, pedidos, leads.
-2. IA opcional: Groq primero, OpenAI como fallback.
-3. Supabase sigue siendo la fuente real para productos, stock, pedidos y cuentas.
+1. Catalogo y detalle cargan datos reales.
+2. Carrito suma/edita/elimina correctamente.
+3. Checkout crea orden con los tres medios de pago.
+4. Mercado Pago crea preferencia y webhook actualiza estado.
+5. Transferencia muestra cuentas activas y conserva el pedido.
+6. WhatsApp abre mensaje con resumen y mantiene trazabilidad.
+7. Admin ABM de categorias/productos/imagenes/pedidos funciona.
+8. Carga de imagen global (gallery/hero/carousel) funciona end-to-end.
 
-No conviene dejar que la IA invente productos, precios o estados. La IA solo interpreta intención y genera una búsqueda limpia.
+## 9) Errores frecuentes y solucion corta
 
-## 7. Notas importantes
+- `null value in column external_reference`: generar `external_reference` al crear orden.
+- `Metodo de pago invalido`: desalineacion front/back (`transfer` vs `transferencia`, falta `whatsapp`).
+- `Could not find column ...`: esquema de DB distinto al esperado.
+- `function public.is_admin() does not exist`: usar policy basada en `profiles` + `auth.uid()`.
+- `site_media` o bucket faltante: ejecutar SQL de bootstrap completo.
 
-- `SUPABASE_SERVICE_ROLE_KEY` nunca debe ir al frontend.
-- `OPENAI_API_KEY` y `GROQ_API_KEY` nunca deben exponerse al navegador.
-- Las variables de `.env.local` no sirven en producción: también deben estar en Netlify.
-- Si se expone una API key en un chat o repositorio, revocarla y crear una nueva.
-# Servicios externos y dónde obtener credenciales
+## 10) Resultado esperado
 
-## Supabase
-
-Panel: https://supabase.com/dashboard
-
-Credenciales:
-
-1. Entrar al proyecto.
-2. Ir a Project Settings > API.
-3. Copiar:
-   - Project URL -> `NEXT_PUBLIC_SUPABASE_URL`
-   - anon/public key -> `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - service_role key -> `SUPABASE_SERVICE_ROLE_KEY`
-
-Importante: la service role key permite acceso elevado y solo debe usarse en backend/server.
-
-## Supabase Storage
-
-Buckets usados:
-
-- `product-images`: imágenes públicas de productos.
-- `product-models`: modelos 3D públicos `.glb/.gltf`.
-- `transfer-receipts`: comprobantes de transferencia privados.
-
-El SQL del paquete crea/actualiza los buckets sin borrar archivos existentes.
-
-## Mercado Pago
-
-Panel Developers: https://www.mercadopago.com.ar/developers
-
-Credenciales:
-
-1. Crear aplicación.
-2. Ir a credenciales de producción o prueba.
-3. Copiar Access Token.
-4. Guardar como `MERCADOPAGO_ACCESS_TOKEN`.
-
-Webhook sugerido:
-
-```text
-https://tu-dominio.com/api/mercadopago/webhook
-```
-
-Back URLs que usa el sitio:
-
-- `/checkout/success`
-- `/checkout/failure`
-- `/checkout/pending`
-
-## Groq
-
-API keys: https://console.groq.com/keys
-Docs: https://console.groq.com/docs
-
-Variable:
-
-```env
-GROQ_API_KEY=gsk_xxxxx
-```
-
-Uso recomendado en este proyecto: clasificador de intención del chatbot. No debe decidir precios, stock o estados.
-
-## OpenAI
-
-API keys: https://platform.openai.com/api-keys
-Docs: https://developers.openai.com/api/docs
-
-Variable:
-
-```env
-OPENAI_API_KEY=sk-proj-xxxxx
-```
-
-Uso recomendado: fallback si Groq falla o si se quiere una respuesta más robusta.
-
-## Netlify
-
-Panel: https://app.netlify.com
-
-Configurar variables en:
-
-```text
-Site configuration > Environment variables
-```
-
-Luego hacer redeploy.
-# Checklist de deploy y seguridad
-
-## Variables obligatorias en Netlify
-
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `ADMIN_SESSION_SECRET`
-- `NEXT_PUBLIC_SITE_URL`
-- `MERCADOPAGO_ACCESS_TOKEN`
-- `GROQ_API_KEY` opcional pero recomendado para IA
-- `OPENAI_API_KEY` opcional como fallback
-
-## Seguridad crítica
-
-- No subir `.env.local` a GitHub.
-- No pegar API keys en chats ni tickets.
-- Revocar claves expuestas inmediatamente.
-- Mantener `SUPABASE_SERVICE_ROLE_KEY` solo en server.
-- Mantener `ADMIN_SESSION_SECRET` con mínimo 32 caracteres.
-- Revisar que cookies admin sean `httpOnly` y `secure` en producción.
-- Activar RLS en tablas públicas.
-- No permitir inserts públicos directos en `orders` ni `contacts`; usar API server.
-
-## Supabase Auth / Admin
-
-1. Crear usuario admin desde Supabase Auth.
-2. Insertar su UUID en `public.profiles` con `role = 'admin'`.
-3. Probar `/admin/login`.
-4. Probar que usuarios sin profile admin no puedan entrar.
-
-## Storage
-
-- `product-images`: público.
-- `product-models`: público.
-- `transfer-receipts`: privado.
-- Subidas deben hacerse desde endpoint admin con service role.
-
-## Mercado Pago
-
-- Usar Access Token correcto según entorno: test o producción.
-- Configurar webhook:
-  - `https://tu-dominio.com/api/mercadopago/webhook`
-- Probar pago aprobado, pendiente y rechazado.
-- Validar que el webhook actualice `orders.status` y `mp_payment_id`.
-
-## Cron / órdenes vencidas
-
-El proyecto incluye función SQL:
-
-```sql
-select public.cancel_expired_transfer_orders();
-```
-
-Y puede exponerse desde:
-
-```text
-/api/cron/cancel-expired-orders
-```
-
-Recomendación: proteger con `CRON_SECRET` y configurar un cron diario/horario en Netlify o servicio externo.
-
-## Pruebas mínimas antes de producción
-
-- Home carga productos reales.
-- Producto detalle carga imágenes/modelos.
-- Carrito funciona.
-- Checkout crea orden.
-- Transferencia descuenta stock y expira si corresponde.
-- Mercado Pago crea preferencia.
-- Webhook cambia estado de pedido.
-- Admin puede aprobar/cancelar transferencia.
-- Contacto guarda en `contacts`.
-- Chat responde productos, cuentas y pedidos.
-- Imágenes suben a Storage.
-- Cuentas bancarias activas aparecen en checkout.
-# Configuraciones que conviene hacer dinámicas
-
-Actualmente varios datos suelen vivir en `lib/site.js`. Para hacer el proyecto reutilizable y administrable, conviene migrarlos a `public.site_settings` o a una pantalla admin de configuración.
-
-## Configuraciones recomendadas
-
-- Nombre de la tienda.
-- Logo.
-- Email comercial.
-- Teléfono.
-- WhatsApp.
-- Ubicación.
-- Horarios de atención.
-- Mensaje principal del home.
-- Texto de beneficios.
-- Redes sociales.
-- Mensaje de transferencia.
-- Costo de envío base.
-- Umbral de envío gratis.
-- Mensajes automáticos del chatbot.
-- Activar/desactivar Mercado Pago.
-- Activar/desactivar transferencia.
-- Activar/desactivar WhatsApp checkout.
-
-## Tabla incluida
-
-El SQL incluye:
-
-```sql
-public.site_settings(key, value, value_json, public, active)
-```
-
-Ejemplo:
-
-```sql
-insert into public.site_settings(key, value, public, active)
-values ('whatsapp_number', '5493810000000', true, true)
-on conflict (key) do update set value = excluded.value;
-```
-
-## Próximo desarrollo recomendado
-
-Crear una pantalla admin:
-
-```text
-/admin/configuracion
-```
-
-Con ABM simple para editar:
-
-- teléfono
-- email
-- WhatsApp
-- dirección
-- redes
-- textos principales
-- flags de pago
-
-Así el sitio queda reusable para otro comercio sin tocar código.
-# Resumen rápido del modelo
-
-Para recrear el sitio desde cero:
-
-1. Crear proyecto Supabase.
-2. Ejecutar `01_supabase_bootstrap.sql`.
-3. Crear usuario admin en Supabase Auth.
-4. Insertarlo en `public.profiles` como admin.
-5. Cargar variables de entorno en `.env.local` y Netlify.
-6. Deployar en Netlify.
-7. Configurar Mercado Pago y webhook.
-8. Cargar datos desde admin:
-   - categorías
-   - productos
-   - imágenes/modelos
-   - cuentas bancarias
-9. Probar checkout y pedidos.
-10. Probar chat y contacto.
-
-Este modelo queda preparado para ecommerce con:
-
-- catálogo con baja lógica
-- SKU automático
-- imágenes y modelos 3D en Storage
-- pedidos con transferencia/Mercado Pago
-- comprobantes
-- cuentas bancarias dinámicas
-- chatbot híbrido con IA
-- contactos/leads
-- panel admin modular
+Con este modelo tenes una base ecommerce productiva, escalable y reutilizable para otros negocios cambiando branding, catalogo y configuraciones, sin rehacer la arquitectura.

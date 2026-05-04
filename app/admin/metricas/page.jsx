@@ -2,6 +2,20 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, AlertTriangle, Clock3, RefreshCw, Route } from 'lucide-react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString('es-AR')
@@ -81,6 +95,45 @@ export default function AdminMetricasPage() {
     const routes = Array.isArray(metrics?.routes) ? metrics.routes : []
     return [...routes].sort((a, b) => (b.errorRate || 0) - (a.errorRate || 0)).slice(0, 5)
   }, [metrics])
+
+  const statusDistribution = useMemo(() => {
+    const recent = Array.isArray(metrics?.recent) ? metrics.recent : []
+    const grouped = recent.reduce((acc, item) => {
+      const status = Number(item?.status || 0)
+      const key = status >= 500 ? '5xx' : status >= 400 ? '4xx' : status >= 300 ? '3xx' : '2xx'
+      acc[key] = (acc[key] || 0) + 1
+      return acc
+    }, {})
+
+    return ['2xx', '3xx', '4xx', '5xx'].map((name) => ({ name, value: grouped[name] || 0 }))
+  }, [metrics])
+
+  const requestsTimeline = useMemo(() => {
+    const recent = Array.isArray(metrics?.recent) ? metrics.recent : []
+    const buckets = new Map()
+
+    for (const item of recent) {
+      const date = new Date(item?.ts)
+      if (Number.isNaN(date.getTime())) continue
+      const key = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+      const prev = buckets.get(key) || { minute: key, requests: 0, errors: 0 }
+      prev.requests += 1
+      if (Number(item?.status || 0) >= 400) prev.errors += 1
+      buckets.set(key, prev)
+    }
+
+    return Array.from(buckets.values()).slice(-20)
+  }, [metrics])
+
+  const slowRoutesChart = useMemo(
+    () => topSlowRoutes.map((route) => ({ route: `${route.method} ${route.route}`, avg: route.avgDurationMs || 0 })),
+    [topSlowRoutes]
+  )
+
+  const errorRoutesChart = useMemo(
+    () => topErrorRoutes.map((route) => ({ route: `${route.method} ${route.route}`, errorRate: route.errorRate || 0 })),
+    [topErrorRoutes]
+  )
 
   if (loading) {
     return (
@@ -216,6 +269,73 @@ export default function AdminMetricasPage() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8 grid gap-6 xl:grid-cols-2">
+          <div className="rounded-3xl border border-[#d8cdb8] bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-extrabold text-[#143047]">Distribución de status (buffer)</h2>
+            <div className="mt-4 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={statusDistribution} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90}>
+                    {statusDistribution.map((entry) => {
+                      const color = entry.name === '2xx' ? '#0f6d5f' : entry.name === '3xx' ? '#5e89a6' : entry.name === '4xx' ? '#e28b3e' : '#b44a42'
+                      return <Cell key={entry.name} fill={color} />
+                    })}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-[#d8cdb8] bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-extrabold text-[#143047]">Requests por minuto (últimas muestras)</h2>
+            <div className="mt-4 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={requestsTimeline}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e6dcc8" />
+                  <XAxis dataKey="minute" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="requests" stroke="#143047" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="errors" stroke="#b44a42" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8 grid gap-6 xl:grid-cols-2">
+          <div className="rounded-3xl border border-[#d8cdb8] bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-extrabold text-[#143047]">Latencia promedio por ruta (Top 5)</h2>
+            <div className="mt-4 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={slowRoutesChart} layout="vertical" margin={{ left: 20, right: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e6dcc8" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="route" width={180} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="avg" fill="#5e89a6" radius={[4, 4, 4, 4]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-[#d8cdb8] bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-extrabold text-[#143047]">Error rate por ruta (Top 5)</h2>
+            <div className="mt-4 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={errorRoutesChart} layout="vertical" margin={{ left: 20, right: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e6dcc8" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="route" width={180} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="errorRate" fill="#b44a42" radius={[4, 4, 4, 4]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </section>
