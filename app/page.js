@@ -23,28 +23,7 @@ import ImageCarousel from '@/components/ImageCarousel'
 import HeroBag3D from '@/components/HeroBag3D'
 import ChatWidget from '@/components/ChatWidget'
 
-const features = [
-    {
-        icon: LampFloor,
-        title: 'Luz con intención',
-        desc: 'Diseños pensados para vestir espacios y generar atmósferas cálidas.',
-    },
-    {
-        icon: Palette,
-        title: 'Estética contemporánea',
-        desc: 'Formas nobles, texturas suaves y una presencia visual premium.',
-    },
-    {
-        icon: Shield,
-        title: 'Calidad cuidada',
-        desc: 'Piezas preparadas para acompañar proyectos residenciales y comerciales.',
-    },
-    {
-        icon: Home,
-        title: 'Pensado para habitar',
-        desc: 'Iluminación decorativa para livings, dormitorios, recepciones y estudios.',
-    },
-]
+const featureIcons = [LampFloor, Palette, Shield, Home]
 
 export default function HomePage() {
     const [products, setProducts] = useState([])
@@ -142,7 +121,7 @@ export default function HomePage() {
                                 href="#catalogo"
                                 className="inline-flex items-center rounded-full bg-[hsl(var(--primary))] px-8 py-3 text-sm font-medium tracking-wide text-[hsl(var(--primary-foreground))] transition-opacity hover:opacity-90"
                             >
-                                Ver colección
+                                {siteContent.hero.ctas.collection}
                             </a>
 
                             <a
@@ -152,7 +131,7 @@ export default function HomePage() {
                                 className="inline-flex items-center gap-2 rounded-full border border-border bg-white/70 px-8 py-3 text-sm font-medium tracking-wide text-foreground transition-colors hover:bg-accent"
                             >
                                 <MessageCircle size={16} />
-                                Pedir asesoramiento
+                                {siteContent.hero.ctas.advice}
                             </a>
                         </div>
                     </motion.div>
@@ -224,7 +203,9 @@ export default function HomePage() {
                             <p className="mt-6 leading-relaxed text-muted-foreground">{siteContent.about.description}</p>
 
                             <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                {features.map((feature, index) => (
+                                {siteContent.features.map((feature, index) => {
+                                    const Icon = featureIcons[index] || LampFloor
+                                    return (
                                     <motion.div
                                         key={feature.title}
                                         initial={{ opacity: 0, y: 20 }}
@@ -234,7 +215,7 @@ export default function HomePage() {
                                         className="flex gap-3"
                                     >
                                         <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-accent">
-                                            <feature.icon size={18} className="text-foreground" />
+                                            <Icon size={18} className="text-foreground" />
                                         </div>
 
                                         <div>
@@ -246,7 +227,8 @@ export default function HomePage() {
                                             </p>
                                         </div>
                                     </motion.div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         </motion.div>
                     </div>
@@ -279,7 +261,7 @@ export default function HomePage() {
                         >
                             <div>
                                 <label className="mb-1.5 block text-sm text-muted-foreground">
-                                    Nombre
+                                    {siteContent.contact.form.nameLabel}
                                 </label>
                                 <input
                                     type="text"
@@ -287,13 +269,13 @@ export default function HomePage() {
                                     value={form.name}
                                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                                     className="w-full rounded-2xl border border-border bg-[hsl(var(--surface))] px-4 py-3 text-sm text-card-foreground transition-shadow focus:outline-none focus:ring-2 focus:ring-ring"
-                                    placeholder="Tu nombre"
+                                    placeholder={siteContent.contact.form.namePlaceholder}
                                 />
                             </div>
 
                             <div>
                                 <label className="mb-1.5 block text-sm text-muted-foreground">
-                                    Email
+                                    {siteContent.contact.form.emailLabel}
                                 </label>
                                 <input
                                     type="email"
@@ -301,13 +283,13 @@ export default function HomePage() {
                                     value={form.email}
                                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                                     className="w-full rounded-2xl border border-border bg-[hsl(var(--surface))] px-4 py-3 text-sm text-card-foreground transition-shadow focus:outline-none focus:ring-2 focus:ring-ring"
-                                    placeholder="tu@email.com"
+                                    placeholder={siteContent.contact.form.emailPlaceholder}
                                 />
                             </div>
 
                             <div>
                                 <label className="mb-1.5 block text-sm text-muted-foreground">
-                                    Mensaje
+                                    {siteContent.contact.form.messageLabel}
                                 </label>
                                 <textarea
                                     required
@@ -315,7 +297,7 @@ export default function HomePage() {
                                     value={form.message}
                                     onChange={(e) => setForm({ ...form, message: e.target.value })}
                                     className="w-full resize-none rounded-2xl border border-border bg-[hsl(var(--surface))] px-4 py-3 text-sm text-card-foreground transition-shadow focus:outline-none focus:ring-2 focus:ring-ring"
-                                    placeholder="Contanos qué ambiente querés resolver o qué pieza te interesa."
+                                    placeholder={siteContent.contact.form.messagePlaceholder}
                                 />
                             </div>
 
@@ -324,7 +306,7 @@ export default function HomePage() {
                                 className="inline-flex items-center gap-2 rounded-full bg-[hsl(var(--primary))] px-8 py-3 text-sm font-medium tracking-wide text-[hsl(var(--primary-foreground))] transition-opacity hover:opacity-90"
                             >
                                 <Send size={14} />
-                                Enviar consulta
+                                {siteContent.contact.form.submit}
                             </button>
                         </motion.form>
 
@@ -335,12 +317,11 @@ export default function HomePage() {
                             className="rounded-[30px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-8"
                         >
                             <h3 className="text-2xl font-bold text-foreground">
-                                Hablemos de tu proyecto
+                                {siteContent.contact.title}
                             </h3>
 
                             <p className="mt-4 leading-relaxed text-muted-foreground">
-                                Podemos ayudarte a elegir la pieza adecuada para un ambiente puntual,
-                                una renovación completa o una propuesta comercial.
+                                {siteContent.contact.description}
                             </p>
 
                             <div className="mt-8 space-y-5">

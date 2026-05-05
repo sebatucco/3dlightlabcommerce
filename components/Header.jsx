@@ -6,17 +6,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingCart, Menu, X } from 'lucide-react'
 import { useCart } from '@/lib/store'
 import Logo from '@/components/Logo'
+import { siteContent } from '@/lib/site'
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const { itemCount, setIsOpen } = useCart()
 
-  const navLinks = [
-    { href: '/#inicio', label: 'Inicio' },
-    { href: '/#catalogo', label: 'Colección' },
-    { href: '/#nosotros', label: 'Estudio' },
-    { href: '/#contacto', label: 'Contacto' },
-  ]
+  const navLinks = siteContent.navigation
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))/0.86] backdrop-blur-xl">

@@ -1,20 +1,12 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-
-const fallbackItems = [
-  { name: 'Diseño lumínico', title: 'Colección Aurora', img: '/gallery/gallery-1.jpg' },
-  { name: 'Texturas cálidas', title: 'Colección Esmé', img: '/gallery/gallery-2.jpg' },
-  { name: 'Volúmenes suaves', title: 'Colección Margot', img: '/gallery/gallery-3.jpg' },
-  { name: 'Escenas contemporáneas', title: 'Colección Maverick', img: '/gallery/gallery-4.jpg' },
-  { name: 'Luz para habitar', title: 'Ambientes reales', img: '/products/lamp-aurora.jpg' },
-  { name: 'Piezas con carácter', title: 'Edición premium', img: '/products/lamp-margot.jpg' },
-]
+import { siteContent } from '@/lib/site'
 
 export default function ImageCarousel() {
   const [activeItem, setActiveItem] = useState(2)
   const [isDesktop, setIsDesktop] = useState(false)
-  const [items, setItems] = useState(fallbackItems)
+  const [items, setItems] = useState(siteContent.carousel.items)
 
   useEffect(() => {
     const checkScreen = () => setIsDesktop(window.innerWidth >= 768)
@@ -64,13 +56,13 @@ export default function ImageCarousel() {
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-8 max-w-2xl">
           <p className="mb-3 text-sm font-medium uppercase tracking-[0.22em] text-[hsl(var(--warm-gray-dark))]">
-            Galería destacada
+            {siteContent.carousel.eyebrow}
           </p>
           <h2 className="text-3xl font-bold leading-tight text-foreground md:text-5xl">
-            Piezas diseñadas para transformar la atmósfera del espacio
+            {siteContent.carousel.title}
           </h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground md:text-lg">
-            Una selección visual inspirada en 3DLightLab para presentar la colección antes de entrar al catálogo.
+            {siteContent.carousel.description}
           </p>
         </div>
 
