@@ -18,7 +18,7 @@ import Footer from '@/components/Footer'
 import CartDrawer from '@/components/CartDrawer'
 import WhatsAppButton from '@/components/WhatsAppButton'
 import CatalogClient from '@/components/CatalogClient'
-import { siteConfig } from '@/lib/site'
+import { siteConfig, siteContent } from '@/lib/site'
 import ImageCarousel from '@/components/ImageCarousel'
 import HeroBag3D from '@/components/HeroBag3D'
 import ChatWidget from '@/components/ChatWidget'
@@ -123,19 +123,18 @@ export default function HomePage() {
                         transition={{ duration: 0.8, ease: 'easeOut' }}
                     >
                         <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[hsl(var(--warm-gray-dark))]">
-                            Diseño de iluminación premium
+                            {siteContent.hero.eyebrow}
                         </p>
 
                         <h1 className="mt-4 text-5xl font-bold leading-tight text-foreground md:text-7xl">
-                            Luz cálida para{' '}
+                            {siteContent.hero.titlePrefix}{' '}
                             <span className="text-[hsl(var(--warm-gray-dark))]">
-                                espacios con carácter
+                                {siteContent.hero.titleHighlight}
                             </span>
                         </h1>
 
                         <p className="mt-6 max-w-md text-lg leading-relaxed text-muted-foreground">
-                            3DLightLab Commerce reúne piezas decorativas, lámparas escultóricas y
-                            soluciones de iluminación con una experiencia de compra clara y elegante.
+                            {siteContent.hero.description}
                         </p>
 
                         <div className="mt-8 flex flex-wrap gap-4">
@@ -181,11 +180,9 @@ export default function HomePage() {
                         viewport={{ once: true }}
                         className="mb-16 text-center"
                     >
-                        <h2 className="text-4xl font-bold text-foreground md:text-5xl">
-                            Colección destacada
-                        </h2>
+                        <h2 className="text-4xl font-bold text-foreground md:text-5xl">{siteContent.catalog.title}</h2>
                         <p className="mx-auto mt-4 max-w-md text-lg text-muted-foreground">
-                            Lámparas con materialidad cálida, presencia visual y detalles cuidados.
+                            {siteContent.catalog.description}
                         </p>
                     </motion.div>
                 </div>
@@ -219,18 +216,12 @@ export default function HomePage() {
                             viewport={{ once: true }}
                         >
                             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[hsl(var(--warm-gray-dark))]">
-                                Nuestro enfoque
+                                {siteContent.about.eyebrow}
                             </p>
 
-                            <h2 className="mt-4 text-4xl font-bold text-foreground md:text-5xl">
-                                Más que una lámpara, una atmósfera
-                            </h2>
+                            <h2 className="mt-4 text-4xl font-bold text-foreground md:text-5xl">{siteContent.about.title}</h2>
 
-                            <p className="mt-6 leading-relaxed text-muted-foreground">
-                                En 3DLightLab Commerce entendemos la iluminación como parte esencial
-                                del proyecto interior. Seleccionamos piezas que aportan textura,
-                                escala y una luz confortable para habitar mejor cada ambiente.
-                            </p>
+                            <p className="mt-6 leading-relaxed text-muted-foreground">{siteContent.about.description}</p>
 
                             <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
                                 {features.map((feature, index) => (

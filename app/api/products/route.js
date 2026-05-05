@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { fallbackProducts } from '@/lib/site'
+import { fallbackProducts } from '@/lib/fallback-products'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 300
